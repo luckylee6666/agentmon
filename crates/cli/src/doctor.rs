@@ -73,6 +73,16 @@ pub fn run() -> Result<()> {
         );
     }
     if cfg!(target_os = "linux") {
+        let fanotify = Path::new("/proc/sys/fs/fanotify/max_queued_events").exists();
+        line(
+            fanotify,
+            "fanotify",
+            if fanotify {
+                "可用：文件读取审计（需 root，未在真机验证）"
+            } else {
+                "内核不支持（需 >= 5.1）：无法审计文件读取"
+            },
+        );
         let ss = which("ss");
         line(
             ss.is_some(),

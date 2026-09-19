@@ -71,9 +71,9 @@ impl ProxyContext {
                 .read()
                 .ok()
                 .and_then(|registry| registry.agent_id(pid).map(|s| s.to_string()))
-            {
-                return Some(agent);
-            }
+        {
+            return Some(agent);
+        }
         self.opts.default_agent.clone()
     }
 

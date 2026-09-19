@@ -93,6 +93,6 @@ artifacts / findings`。默认保留 7 天，findings 至少保留 30 天。
 
 | 能力 | macOS | Linux | Windows |
 |---|---|---|---|
-| 按进程字节 | `nettop`（PTY，精确） | `ss -tinp`（近似） | 未实现 |
-| 文件读取审计 | `eslogger` 子进程（root） | fanotify（未实现） | ETW（未实现） |
+| 按进程字节 | `nettop`（PTY，精确） | `ss -tinp`（近似，未在真机验证） | 未实现 |
+| 文件读取审计 | `eslogger` 子进程（root） | fanotify 挂载标记（root，未在真机验证） | ETW（未实现） |
 | 内容层 | 一致 | 一致 | 一致 |

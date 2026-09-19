@@ -110,16 +110,18 @@ impl CompiledProfile {
         }
 
         if let Some(set) = &self.exe
-            && let Some(exe) = exe {
-                let path = exe.to_string_lossy();
-                if set.is_match(path.as_ref()) {
-                    return true;
-                }
-                if let Some(base) = exe.file_name().and_then(|b| b.to_str())
-                    && set.is_match(base) {
-                        return true;
-                    }
+            && let Some(exe) = exe
+        {
+            let path = exe.to_string_lossy();
+            if set.is_match(path.as_ref()) {
+                return true;
             }
+            if let Some(base) = exe.file_name().and_then(|b| b.to_str())
+                && set.is_match(base)
+            {
+                return true;
+            }
+        }
 
         if !self.raw.process.cmdline_contains.is_empty() {
             let joined = cmdline.join(" ").to_ascii_lowercase();
@@ -145,14 +147,16 @@ impl CompiledProfile {
     pub fn domain_allowed(&self, host: &str, include_telemetry: bool) -> bool {
         let host = host.trim_end_matches('.').to_ascii_lowercase();
         if let Some(set) = &self.domains
-            && set.is_match(&host) {
-                return true;
-            }
+            && set.is_match(&host)
+        {
+            return true;
+        }
         if include_telemetry
             && let Some(set) = &self.telemetry
-                && set.is_match(&host) {
-                    return true;
-                }
+            && set.is_match(&host)
+        {
+            return true;
+        }
         false
     }
 
@@ -249,9 +253,10 @@ impl ProfileSet {
     pub fn domain_allowed(&self, agent_id: Option<&str>, host: &str) -> bool {
         let host = host.trim_end_matches('.').to_ascii_lowercase();
         if let Some(set) = &self.global_domains
-            && set.is_match(&host) {
-                return true;
-            }
+            && set.is_match(&host)
+        {
+            return true;
+        }
         match agent_id.and_then(|id| self.get(id)) {
             Some(profile) => profile.domain_allowed(&host, true),
             None => false,

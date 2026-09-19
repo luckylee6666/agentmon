@@ -111,9 +111,10 @@ fn execute(step: &Step, dry_run: bool) {
             }
             set_mode(path, *mode);
             if let Some(group) = group
-                && let Some(gid) = group_id(group) {
-                    let _ = chown(path, 0, gid);
-                }
+                && let Some(gid) = group_id(group)
+            {
+                let _ = chown(path, 0, gid);
+            }
         }
         Step::WriteFile {
             path,

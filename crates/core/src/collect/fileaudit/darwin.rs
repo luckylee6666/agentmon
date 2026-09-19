@@ -1,5 +1,5 @@
 use super::super::CollectorCtx;
-use super::FileAuditHandle;
+use super::{FileAuditHandle, RateLimiter};
 use crate::model::{Event, FileEvent, FileOp};
 use crate::sensitive::SensitiveMatcher;
 use serde_json::Value;
@@ -142,25 +142,6 @@ fn run(ctx: CollectorCtx, stop: Arc<AtomicBool>) {
 
     let _ = child.kill();
     let _ = child.wait();
-}
-
-#[derive(Default)]
-struct RateLimiter {
-    window_start: i64,
-    counts: std::collections::HashMap<u32, u32>,
-}
-
-impl RateLimiter {
-    fn allow(&mut self, pid: u32, limit: u32) -> bool {
-        let now = crate::util::now_ms();
-        if now - self.window_start >= 1000 {
-            self.window_start = now;
-            self.counts.clear();
-        }
-        let count = self.counts.entry(pid).or_insert(0);
-        *count += 1;
-        *count <= limit
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

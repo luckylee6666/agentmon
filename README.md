@@ -24,7 +24,10 @@
 ```
 1. 元数据（无需特权）   进程归属 · 出站连接 · 按进程字节 · 静态痕迹
 2. 内容（本地代理）     请求体分类：源码 / 密钥 / 压缩包 / base64 解包
-3. 文件读取（需 root）  eslogger(macOS) / fanotify(Linux) / ETW(Windows)
+3. 文件读取（需 root）  eslogger(macOS) / fanotify(Linux) / ETW(Windows 未实现)
+
+> 平台验证状态：macOS 上三层都已实测通过；Linux 的元数据层、内容层、fanotify 文件层代码均已实现，但只做了协议解析层的单元测试，**未在真实 Linux 上跑过**；
+> Windows 目前只有元数据层这一层。
 ```
 
 内容层用 `agentmon wrap` 启动 agent 即可启用，**不需要修改系统信任设置**：

@@ -92,9 +92,10 @@ impl Detector {
             return Vec::new();
         }
         if let Some(host) = &conn.remote_host
-            && self.profiles.domain_allowed(Some(&agent_id), host) {
-                return Vec::new();
-            }
+            && self.profiles.domain_allowed(Some(&agent_id), host)
+        {
+            return Vec::new();
+        }
         let key = format!("{agent_id}|{ip}");
         if !self.should_emit(&format!("{RULE_UNKNOWN_DOMAIN}|{key}"), DEDUPE_WINDOW_MS) {
             return Vec::new();
@@ -179,9 +180,10 @@ impl Detector {
                 volume.bytes_out,
                 Some(volume.pid),
                 "upload",
-            ) {
-                findings.push(finding);
-            }
+            )
+        {
+            findings.push(finding);
+        }
 
         findings
     }
@@ -403,9 +405,9 @@ impl Detector {
         if (sensitive || http.bytes_out >= SIGNIFICANT_UPLOAD_BYTES)
             && let Some(finding) =
                 self.correlate_upload(&agent_id, http.ts, http.bytes_out, http.pid, "http-upload")
-            {
-                findings.push(finding);
-            }
+        {
+            findings.push(finding);
+        }
 
         if !sensitive {
             return findings;
@@ -528,9 +530,10 @@ impl Detector {
     fn should_emit(&mut self, key: &str, window_ms: i64) -> bool {
         let now = util::now_ms();
         if let Some(last) = self.dedupe.get(key)
-            && now - *last < window_ms {
-                return false;
-            }
+            && now - *last < window_ms
+        {
+            return false;
+        }
         self.dedupe.insert(key.to_string(), now);
         true
     }

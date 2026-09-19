@@ -760,7 +760,12 @@ async fn cmd_wrap(
             if let Event::Http(capture) = &event {
                 let findings = {
                     let registry = registry.read().unwrap_or_else(|e| e.into_inner());
-                    detector.evaluate(&event, DetectCtx { registry: &registry })
+                    detector.evaluate(
+                        &event,
+                        DetectCtx {
+                            registry: &registry,
+                        },
+                    )
                 };
                 if let Some(store) = &store {
                     store.send_event(event.clone());

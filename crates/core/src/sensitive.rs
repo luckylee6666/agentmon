@@ -102,9 +102,10 @@ impl SensitiveMatcher {
         }
 
         if let Some(extra) = &self.extra
-            && extra.is_match(path) {
-                return Some(Sensitivity::Secret);
-            }
+            && extra.is_match(path)
+        {
+            return Some(Sensitivity::Secret);
+        }
 
         None
     }

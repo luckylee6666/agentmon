@@ -83,9 +83,10 @@ pub fn expand_tilde(input: &str) -> PathBuf {
             return home.join(rest);
         }
     } else if input == "~"
-        && let Some(home) = home_dir() {
-            return home;
-        }
+        && let Some(home) = home_dir()
+    {
+        return home;
+    }
     PathBuf::from(input)
 }
 

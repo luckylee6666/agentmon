@@ -30,9 +30,10 @@ impl Alerter {
                 self.desktop(finding);
             }
             if let (Some(url), Some(client)) = (&self.config.alert.webhook_url, &self.client)
-                && let Err(err) = self.webhook(client, url, finding).await {
-                    tracing::warn!("webhook delivery failed: {err:#}");
-                }
+                && let Err(err) = self.webhook(client, url, finding).await
+            {
+                tracing::warn!("webhook delivery failed: {err:#}");
+            }
         }
     }
 
