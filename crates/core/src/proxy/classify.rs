@@ -32,6 +32,9 @@ pub struct Classification {
     pub class: PayloadClass,
     /// Human readable reason. Never contains the secret value itself.
     pub sample: Option<String>,
+    /// Text worth keeping for the audit trail. For a container this is the
+    /// *decompressed* prefix, which is what makes a packed upload legible.
+    pub preview: Option<String>,
 }
 
 /// Classifies a request body. Nested containers (gzip / base64 wrapped payloads)
@@ -41,16 +44,83 @@ pub fn classify(body: &[u8], content_type: Option<&str>) -> Classification {
     classify_inner(body, content_type, 0)
 }
 
+/// Entry names inside a tar stream. Wrapped repositories are the case that
+/// matters here, and a listing is the only readable thing a tarball yields.
+fn tar_entry_names(bytes: &[u8], limit: usize) -> Vec<String> {
+    let mut names = Vec::new();
+    let mut offset = 0usize;
+    while offset + 512 <= bytes.len() && names.len() < limit {
+        let header = &bytes[offset..offset + 512];
+        if header.iter().all(|byte| *byte == 0) {
+            break;
+        }
+        let name_end = header[..100]
+            .iter()
+            .position(|byte| *byte == 0)
+            .unwrap_or(100);
+        let name = String::from_utf8_lossy(&header[..name_end])
+            .trim()
+            .to_string();
+        if !name.is_empty() {
+            names.push(name);
+        }
+        let size_field = String::from_utf8_lossy(&header[124..136]);
+        let size =
+            usize::from_str_radix(size_field.trim_matches(|c: char| c == '\0' || c == ' '), 8)
+                .unwrap_or(0);
+        offset += 512 + size.div_ceil(512) * 512;
+    }
+    names
+}
+
+fn archive_preview(bytes: &[u8]) -> Option<String> {
+    let names = tar_entry_names(bytes, 20);
+    if names.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "归档内容（前 {} 项）：\n{}",
+        names.len(),
+        names.join("\n")
+    ))
+}
+
+/// Bounded, printable prefix of a payload, or nothing when it is not text.
+fn text_preview(bytes: &[u8]) -> Option<String> {
+    const PREVIEW_LIMIT: usize = 8192;
+    if bytes.is_empty() {
+        return None;
+    }
+    let slice = &bytes[..bytes.len().min(PREVIEW_LIMIT)];
+    let text = String::from_utf8_lossy(slice);
+    if text.chars().any(|c| c == '\u{0}') {
+        return None;
+    }
+    let total = text.chars().count().max(1);
+    let printable = text
+        .chars()
+        .filter(|c| !c.is_control() || *c == '\n' || *c == '\r' || *c == '\t')
+        .count();
+    if printable * 100 / total < 90 {
+        return None;
+    }
+    Some(text.into_owned())
+}
+
 fn classify_inner(body: &[u8], content_type: Option<&str>, depth: usize) -> Classification {
     if body.is_empty() {
         return Classification {
             class: PayloadClass::Empty,
             sample: None,
+            preview: None,
         };
     }
     if depth < 3 {
         if let Some(inner) = maybe_decompress(body) {
             let mut nested = classify_inner(&inner, content_type, depth + 1);
+            if nested.preview.is_none() {
+                nested.preview = text_preview(&inner).or_else(|| archive_preview(&inner));
+            }
             nested.sample = Some(match nested.sample {
                 Some(reason) => format!("gzip 解压后：{reason}"),
                 None => "gzip 解压后内容".into(),
@@ -71,6 +141,7 @@ fn classify_inner(body: &[u8], content_type: Option<&str>, depth: usize) -> Clas
         return Classification {
             class: PayloadClass::Archive,
             sample: Some(format!("压缩包/归档格式（{} 字节）", body.len())),
+            preview: archive_preview(body),
         };
     }
 
@@ -87,11 +158,13 @@ fn classify_inner(body: &[u8], content_type: Option<&str>, depth: usize) -> Clas
                 return Classification {
                     class: PayloadClass::Text,
                     sample: None,
+                    preview: None,
                 };
             }
             return Classification {
                 class: PayloadClass::Binary,
                 sample: Some(format!("二进制数据（{} 字节）", body.len())),
+                preview: None,
             };
         }
     };
@@ -100,6 +173,7 @@ fn classify_inner(body: &[u8], content_type: Option<&str>, depth: usize) -> Clas
         return Classification {
             class: PayloadClass::Secret,
             sample: Some(format!("命中密钥特征：{kind}")),
+            preview: text_preview(body),
         };
     }
 
@@ -107,6 +181,7 @@ fn classify_inner(body: &[u8], content_type: Option<&str>, depth: usize) -> Clas
         return Classification {
             class: PayloadClass::SourceCode,
             sample: Some(describe_source(text)),
+            preview: text_preview(body),
         };
     }
 
@@ -114,6 +189,7 @@ fn classify_inner(body: &[u8], content_type: Option<&str>, depth: usize) -> Clas
     Classification {
         class: PayloadClass::Text,
         sample: None,
+        preview: text_preview(body),
     }
 }
 
@@ -133,8 +209,11 @@ fn maybe_decompress(body: &[u8]) -> Option<Vec<u8>> {
     } else {
         Box::new(ZlibDecoder::new(body))
     };
+    // A truncated stream is the normal case, not an error: only the first
+    // `capture_bytes` of a large upload are tee'd, so a 36MB tar.gz arrives
+    // cut off. Whatever decompressed before the cut is still worth keeping.
     let mut limited = (&mut reader).take(4 * 1024 * 1024);
-    limited.read_to_end(&mut out).ok()?;
+    let _ = limited.read_to_end(&mut out);
     if out.is_empty() { None } else { Some(out) }
 }
 
@@ -454,6 +533,73 @@ export const x = 1;
 
         let jwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U";
         assert_eq!(classify(jwt.as_bytes(), None).class, PayloadClass::Secret);
+    }
+
+    /// A 36MB tarball only ever reaches us cut off at `capture_bytes`, and a
+    /// truncated deflate stream makes the decoder error out. Losing the whole
+    /// prefix there would hide exactly the uploads worth seeing.
+    #[test]
+    fn keeps_the_prefix_of_a_truncated_gzip_stream() {
+        use flate2::Compression;
+        use flate2::write::GzEncoder;
+        use std::io::Write;
+
+        let mut source = String::new();
+        for i in 0..2_000 {
+            source.push_str(&format!("pub fn module_{i}() -> u8 {{ {i} }}\n"));
+        }
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(source.as_bytes()).unwrap();
+        let compressed = encoder.finish().unwrap();
+
+        // Cut the stream in half, the way a size-capped capture does.
+        let truncated = &compressed[..compressed.len() / 2];
+        let classification = classify(truncated, None);
+        assert_eq!(
+            classification.class,
+            PayloadClass::SourceCode,
+            "a cut off gzip stream should still be classified from its prefix"
+        );
+        let preview = classification.preview.expect("partial content is kept");
+        assert!(
+            preview.contains("module_0"),
+            "preview: {}",
+            &preview[..80.min(preview.len())]
+        );
+    }
+
+    #[test]
+    fn lists_entries_inside_a_tarball() {
+        use flate2::Compression;
+        use flate2::write::GzEncoder;
+        use std::io::Write;
+
+        let mut tar_bytes = Vec::new();
+        for (name, content) in [
+            ("src/main.rs", "fn main() {}"),
+            ("src/lib.rs", "pub mod x;"),
+            (".git/config", "[core]"),
+        ] {
+            let mut header = [0u8; 512];
+            header[..name.len()].copy_from_slice(name.as_bytes());
+            // size lives at 124..136 as 11 octal digits plus a NUL
+            let size = format!("{:011o}\0", content.len());
+            header[124..136].copy_from_slice(size.as_bytes());
+            tar_bytes.extend_from_slice(&header);
+            let mut block = vec![0u8; 512];
+            block[..content.len()].copy_from_slice(content.as_bytes());
+            tar_bytes.extend_from_slice(&block);
+        }
+        tar_bytes.extend_from_slice(&[0u8; 1024]);
+
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(&tar_bytes).unwrap();
+        let compressed = encoder.finish().unwrap();
+
+        let classification = classify(&compressed, None);
+        let preview = classification.preview.expect("tarball listing");
+        assert!(preview.contains("src/main.rs"), "preview: {preview}");
+        assert!(preview.contains(".git/config"), "preview: {preview}");
     }
 
     #[test]

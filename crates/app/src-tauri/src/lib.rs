@@ -298,6 +298,14 @@ fn list_http_requests(since_ms: Option<i64>, limit: Option<i64>) -> CmdResult<Ve
     store::http_requests(&conn, since, limit.unwrap_or(300)).map_err(err)
 }
 
+/// Bodies are fetched one at a time, never with the listing: they contain the
+/// user's prompts and source code verbatim.
+#[tauri::command]
+fn http_body(id: i64) -> CmdResult<Option<String>> {
+    let (conn, _) = open_readonly()?;
+    store::http_body(&conn, id).map_err(err)
+}
+
 #[tauri::command]
 fn list_artifacts(limit: Option<i64>) -> CmdResult<Vec<store::ArtifactRow>> {
     let (conn, _) = open_readonly()?;
@@ -421,6 +429,7 @@ pub fn run() {
             set_finding_ignored,
             list_file_events,
             list_http_requests,
+            http_body,
             list_artifacts,
             egress,
             destinations,

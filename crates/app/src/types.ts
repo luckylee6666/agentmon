@@ -67,6 +67,7 @@ export interface FileEventRow {
 }
 
 export interface HttpRow {
+  id: number;
   ts: number;
   agent_id?: string | null;
   host: string;
@@ -75,6 +76,7 @@ export interface HttpRow {
   bytes_out: number;
   class: string;
   sample?: string | null;
+  has_body: boolean;
 }
 
 export interface DbInfo {

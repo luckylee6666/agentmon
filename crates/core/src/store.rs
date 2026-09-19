@@ -81,7 +81,8 @@ CREATE TABLE IF NOT EXISTS http_requests (
   bytes_out INTEGER NOT NULL,
   body_sha256 TEXT,
   class TEXT NOT NULL,
-  sample TEXT
+  sample TEXT,
+  body TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_http_ts ON http_requests(ts);
 CREATE INDEX IF NOT EXISTS idx_http_agent ON http_requests(agent_id, ts);
@@ -121,10 +122,19 @@ pub fn open(path: &Path) -> Result<Connection> {
     conn.busy_timeout(Duration::from_millis(5_000))?;
     conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")?;
     conn.execute_batch(SCHEMA)?;
+    migrate(&conn)?;
     Ok(conn)
 }
 
 pub fn open_readonly(path: &Path) -> Result<Connection> {
+    // A database written by an older build may be missing columns that current
+    // queries select, and upgrading needs write access. Best effort: try a
+    // short lived writable connection first, then open read-only regardless.
+    if let Ok(conn) = Connection::open(path) {
+        let _ = conn.busy_timeout(Duration::from_millis(1_000));
+        let _ = migrate(&conn);
+    }
+
     let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
     conn.busy_timeout(Duration::from_millis(3_000))?;
     Ok(conn)
@@ -239,8 +249,8 @@ pub fn insert_event(conn: &Connection, ev: &Event) -> Result<()> {
         }
         Event::Http(h) => {
             conn.execute(
-                "INSERT INTO http_requests (ts, pid, agent_id, host, method, path, bytes_out, body_sha256, class, sample)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                "INSERT INTO http_requests (ts, pid, agent_id, host, method, path, bytes_out, body_sha256, class, sample, body)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                 params![
                     h.ts,
                     h.pid,
@@ -251,7 +261,8 @@ pub fn insert_event(conn: &Connection, ev: &Event) -> Result<()> {
                     h.bytes_out as i64,
                     h.body_sha256,
                     h.class,
-                    h.sample
+                    h.sample,
+                    h.body
                 ],
             )?;
         }
@@ -469,6 +480,7 @@ pub fn volume_series(
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HttpRow {
+    pub id: i64,
     pub ts: i64,
     pub agent_id: Option<String>,
     pub host: String,
@@ -477,23 +489,67 @@ pub struct HttpRow {
     pub bytes_out: u64,
     pub class: String,
     pub sample: Option<String>,
+    /// Whether a body was stored, without shipping it with every listing.
+    pub has_body: bool,
+}
+
+/// `CREATE TABLE IF NOT EXISTS` silently skips databases from earlier
+/// versions, so columns added later need an explicit upgrade step.
+pub fn migrate(conn: &Connection) -> Result<()> {
+    let columns: Vec<String> = {
+        let mut stmt = conn.prepare("PRAGMA table_info(http_requests)")?;
+        let rows = stmt.query_map([], |row| row.get::<_, String>(1))?;
+        rows.filter_map(Result::ok).collect()
+    };
+    if !columns.iter().any(|name| name == "body") {
+        conn.execute_batch("ALTER TABLE http_requests ADD COLUMN body TEXT;")?;
+        tracing::info!("migrated: added http_requests.body");
+    }
+    Ok(())
+}
+
+/// Host of a capture, used to tell "no such id" apart from "not stored".
+pub fn http_capture_host(conn: &Connection, id: i64) -> Result<Option<String>> {
+    let host = conn
+        .query_row(
+            "SELECT host FROM http_requests WHERE id = ?1",
+            params![id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?;
+    Ok(host)
+}
+
+/// Fetched on demand: bodies are large and only opened deliberately.
+pub fn http_body(conn: &Connection, id: i64) -> Result<Option<String>> {
+    let body = conn
+        .query_row(
+            "SELECT body FROM http_requests WHERE id = ?1",
+            params![id],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .optional()?;
+    Ok(body.flatten())
 }
 
 pub fn http_requests(conn: &Connection, since: i64, limit: i64) -> Result<Vec<HttpRow>> {
     let mut stmt = conn.prepare(
-        "SELECT ts, agent_id, host, method, path, bytes_out, class, sample FROM http_requests
-         WHERE ts >= ?1 ORDER BY ts DESC LIMIT ?2",
+        "SELECT id, ts, agent_id, host, method, path, bytes_out, class, sample,
+                body IS NOT NULL
+         FROM http_requests WHERE ts >= ?1 ORDER BY ts DESC LIMIT ?2",
     )?;
     let rows = stmt.query_map(params![since, limit], |row| {
         Ok(HttpRow {
-            ts: row.get(0)?,
-            agent_id: row.get(1)?,
-            host: row.get(2)?,
-            method: row.get(3)?,
-            path: row.get(4)?,
-            bytes_out: row.get::<_, i64>(5)?.max(0) as u64,
-            class: row.get(6)?,
-            sample: row.get(7)?,
+            id: row.get(0)?,
+            ts: row.get(1)?,
+            agent_id: row.get(2)?,
+            host: row.get(3)?,
+            method: row.get(4)?,
+            path: row.get(5)?,
+            bytes_out: row.get::<_, i64>(6)?.max(0) as u64,
+            class: row.get(7)?,
+            sample: row.get(8)?,
+            has_body: row.get::<_, i64>(9)? != 0,
         })
     })?;
     let mut out = Vec::new();

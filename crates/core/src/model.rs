@@ -167,6 +167,10 @@ pub struct Artifact {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HttpCapture {
     pub ts: i64,
+    /// Request body prefix, only populated when `capture.capture_bodies` is on.
+    /// Off by default: it contains prompts and source code verbatim.
+    #[serde(default)]
+    pub body: Option<String>,
     pub pid: Option<u32>,
     pub agent_id: Option<String>,
     pub host: String,

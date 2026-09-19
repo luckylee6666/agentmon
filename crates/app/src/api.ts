@@ -42,6 +42,7 @@ export const api = {
   setIgnored: (id: number, ignored: boolean) => call<void>("set_finding_ignored", { id, ignored }, undefined),
   fileEvents: (agentId?: string, sinceMs?: number, limit?: number) =>
     call<FileEventRow[]>("list_file_events", { agentId, sinceMs, limit }, mock.mockFileEvents),
+  httpBody: (id: number) => call<string | null>("http_body", { id }, `pub struct Ledger {\n    pub entries: HashMap<String, i64>,\n}\n\nimpl Ledger {\n    pub fn balance(&self, account: &str) -> i64 {\n        self.entries.get(account).copied().unwrap_or(0)\n    }\n}`),
   httpRequests: (sinceMs?: number, limit?: number) =>
     call<HttpRow[]>("list_http_requests", { sinceMs, limit }, mock.mockHttp),
   artifacts: (limit?: number) => call<ArtifactRow[]>("list_artifacts", { limit }, mock.mockArtifacts),

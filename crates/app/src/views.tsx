@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { api, type AgentDto, type ArtifactRow, type Destination, type FileEventRow, type Finding, type HttpRow, type ProfileDto } from "./api";
 import { formatAgo, formatBytes, formatCount, formatTime, elidePath, evidenceLabels, ruleLabels } from "./format";
 
@@ -265,6 +265,41 @@ export function FileAuditView({
 }
 
 export function ContentView({ requests, proxyAddr }: { requests: HttpRow[]; proxyAddr: string | null }) {
+  type BodyState = "idle" | "loading" | "error" | { text: string | null };
+  const [openId, setOpenId] = useState<number | null>(null);
+  const [bodyState, setBodyState] = useState<BodyState>("idle");
+  const [bodyError, setBodyError] = useState("");
+
+  useEffect(() => {
+    if (openId === null) {
+      setBodyState("idle");
+      return;
+    }
+    // Guards against a fast second click resolving after the first.
+    let cancelled = false;
+    setBodyState("loading");
+    api
+      .httpBody(openId)
+      .then((text) => {
+        if (!cancelled) setBodyState({ text });
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setBodyError(String(err));
+          setBodyState("error");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [openId]);
+
+  const toggleBody = (id: number) => {
+    setOpenId(openId === id ? null : id);
+  };
+
+  const stored = requests.filter((request) => request.has_body).length;
+
   return (
     <div className="panel">
       <div className="panel-head">
@@ -277,6 +312,12 @@ export function ContentView({ requests, proxyAddr }: { requests: HttpRow[]; prox
         用 <span className="mono">agentmon wrap -- &lt;agent 命令&gt;</span> 启动 agent 后，
         这里显示请求体的判定结果。判定在本地完成：先解开 gzip / base64 / 归档，再识别源码与密钥特征；
         命中密钥时只记录类型，不保存密钥原文。
+        {requests.length > 0 && stored === 0 && (
+          <div style={{ marginTop: 6 }}>
+            原文本地未保存（默认如此，它会原样留住你的 prompt 和源码）。要能点开查看，
+            在配置里打开 <span className="mono">capture.capture_bodies</span> 后重启守护进程。
+          </div>
+        )}
       </div>
       {requests.length === 0 ? (
         <div className="empty">暂无抓包数据</div>
@@ -291,28 +332,50 @@ export function ContentView({ requests, proxyAddr }: { requests: HttpRow[]; prox
               <th>路径</th>
               <th className="num">请求体</th>
               <th>判定</th>
+              <th>原文</th>
             </tr>
           </thead>
           <tbody>
             {requests.map((request, index) => (
-              <tr key={index}>
-                <td className="muted mono" style={{ whiteSpace: "nowrap" }}>
-                  {formatTime(request.ts)}
-                </td>
-                <td>{request.agent_id ?? "-"}</td>
-                <td className="mono muted">{request.method}</td>
-                <td className="mono">{request.host}</td>
-                <td className="mono pre">{request.path}</td>
-                <td className="num">{formatBytes(request.bytes_out)}</td>
-                <td>
-                  <span className={`sev ${classColor(request.class)}`}>{request.class}</span>
-                  {request.sample && (
-                    <div className="muted" style={{ fontSize: 11, marginTop: 3 }}>
-                      {request.sample}
-                    </div>
-                  )}
-                </td>
-              </tr>
+              <Fragment key={request.id ?? index}>
+                <tr
+                  className={request.has_body ? "row-clickable" : undefined}
+                  onClick={request.has_body ? () => toggleBody(request.id) : undefined}
+                >
+                  <td className="muted mono" style={{ whiteSpace: "nowrap" }}>
+                    {formatTime(request.ts)}
+                  </td>
+                  <td>{request.agent_id ?? "-"}</td>
+                  <td className="mono muted">{request.method}</td>
+                  <td className="mono">{request.host}</td>
+                  <td className="mono pre">{request.path}</td>
+                  <td className="num">{formatBytes(request.bytes_out)}</td>
+                  <td>
+                    <span className={`sev ${classColor(request.class)}`}>{request.class}</span>
+                    {request.sample && (
+                      <div className="muted" style={{ fontSize: 11, marginTop: 3 }}>
+                        {request.sample}
+                      </div>
+                    )}
+                  </td>
+                  <td className="muted" style={{ whiteSpace: "nowrap" }}>
+                    {request.has_body ? (openId === request.id ? "收起" : "查看") : "-"}
+                  </td>
+                </tr>
+                {openId === request.id && (
+                  <tr className="body-row">
+                    <td colSpan={8}>
+                      {bodyState === "loading" && <div className="muted">读取中…</div>}
+                      {bodyState === "error" && (
+                        <div className="muted">读取失败：{bodyError}</div>
+                      )}
+                      {typeof bodyState === "object" && bodyState !== null && (
+                        <pre className="payload">{bodyState.text ?? "（空）"}</pre>
+                      )}
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             ))}
           </tbody>
         </table>

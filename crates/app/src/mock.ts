@@ -251,6 +251,7 @@ export const mockFileEvents: FileEventRow[] = [
 
 export const mockHttp: HttpRow[] = [
   {
+    id: 701,
     ts: now - 90_000,
     agent_id: "zcode",
     host: "api.z.ai",
@@ -259,8 +260,10 @@ export const mockHttp: HttpRow[] = [
     bytes_out: 37_957_632,
     class: "source_code",
     sample: "疑似源码（12,884 行，含 .ts .sql .rs 等文件引用）",
+    has_body: true,
   },
   {
+    id: 702,
     ts: now - 6 * minute,
     agent_id: "claude-code",
     host: "sync.unknown-vendor.example",
@@ -269,8 +272,10 @@ export const mockHttp: HttpRow[] = [
     bytes_out: 1_258_291,
     class: "source_code",
     sample: "疑似源码（3,214 行，含 .ts .tsx .sql 等文件引用）",
+    has_body: true,
   },
   {
+    id: 703,
     ts: now - 11 * minute,
     agent_id: "claude-code",
     host: "api.anthropic.com",
@@ -279,8 +284,10 @@ export const mockHttp: HttpRow[] = [
     bytes_out: 18_432,
     class: "text",
     sample: null,
+    has_body: true,
   },
   {
+    id: 704,
     ts: now - 27 * minute,
     agent_id: "codex-cli",
     host: "chatgpt.com",
@@ -289,8 +296,10 @@ export const mockHttp: HttpRow[] = [
     bytes_out: 2_097_152,
     class: "archive",
     sample: "gzip 解压后：压缩包/归档格式（72192 字节）",
+    has_body: true,
   },
   {
+    id: 705,
     ts: now - 63 * minute,
     agent_id: "zcode",
     host: "198.18.0.85",
@@ -299,6 +308,7 @@ export const mockHttp: HttpRow[] = [
     bytes_out: 4_194_304,
     class: "binary",
     sample: "二进制数据（194304 字节）",
+    has_body: true,
   },
 ];
 

@@ -32,6 +32,12 @@ pub struct ProxyOptions {
     pub default_agent: Option<String>,
     /// How many bytes of each request body are inspected for classification.
     pub capture_bytes: usize,
+    /// Store the inspected prefix in the database. Off by default because it
+    /// keeps prompts and source code verbatim, which is exactly the kind of
+    /// quiet hoarding this tool exists to catch.
+    pub store_bodies: bool,
+    /// Hard cap for a stored body.
+    pub max_body_bytes: usize,
 }
 
 impl Default for ProxyOptions {
@@ -39,6 +45,8 @@ impl Default for ProxyOptions {
         ProxyOptions {
             listen: "127.0.0.1:8899".parse().expect("valid default listen addr"),
             default_agent: None,
+            store_bodies: false,
+            max_body_bytes: 65536,
             capture_bytes: 1024 * 1024,
         }
     }
@@ -411,6 +419,28 @@ async fn forward(
 }
 
 #[allow(clippy::too_many_arguments)]
+/// Bodies are kept as text only. Binary payloads (a packed archive, for
+/// instance) are already described by their classification, and storing them
+/// would just bloat the database.
+fn stored_body(bytes: &[u8], max: usize) -> Option<String> {
+    if bytes.is_empty() {
+        return None;
+    }
+    let slice = &bytes[..bytes.len().min(max)];
+    let text = String::from_utf8_lossy(slice);
+    if text.chars().any(|c| c == '\u{0}') {
+        return None;
+    }
+    let printable = text
+        .chars()
+        .filter(|c| !c.is_control() || *c == '\n' || *c == '\r' || *c == '\t')
+        .count();
+    if printable * 100 / text.chars().count().max(1) < 90 {
+        return None;
+    }
+    Some(text.into_owned())
+}
+
 fn emit_capture(
     ctx: &Arc<ProxyContext>,
     peer: &SocketAddr,
@@ -446,10 +476,20 @@ fn emit_capture(
     let agent_id = ctx.agent_for_port(peer.port());
     let pid = ctx.pid_for_port(peer.port());
     let digest = Sha256::digest(&bytes);
+    let body = if ctx.opts.store_bodies {
+        classification
+            .preview
+            .as_ref()
+            .map(|preview| preview.chars().take(ctx.opts.max_body_bytes).collect())
+            .or_else(|| stored_body(&bytes, ctx.opts.max_body_bytes))
+    } else {
+        None
+    };
     let body_sha256: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
 
     let _ = sink.send(Event::Http(HttpCapture {
         ts: crate::util::now_ms(),
+        body,
         pid,
         agent_id,
         host: host.to_string(),

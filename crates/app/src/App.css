@@ -638,3 +638,23 @@ dl.kv dd {
   font-size: 11px;
   word-break: break-all;
 }
+
+.row-clickable {
+  cursor: pointer;
+}
+.row-clickable:hover {
+  background: rgba(76, 141, 255, 0.07);
+}
+.body-row > td {
+  background: #0b0f16;
+  padding: 10px 14px;
+}
+.payload {
+  margin: 0;
+  max-height: 380px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: 11.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #cbd5e1;
+}

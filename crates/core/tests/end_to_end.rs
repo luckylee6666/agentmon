@@ -97,6 +97,8 @@ async fn bulk_read_then_packed_upload_raises_exfil_chain() {
             listen: "127.0.0.1:0".parse().unwrap(),
             default_agent: Some(AGENT.to_string()),
             capture_bytes: 4 * 1024 * 1024,
+            store_bodies: true,
+            max_body_bytes: 1024 * 1024,
         },
         ca.clone(),
         Some(tx),
@@ -152,6 +154,14 @@ async fn bulk_read_then_packed_upload_raises_exfil_chain() {
         capture.class
     );
     assert_eq!(capture.agent_id.as_deref(), Some(AGENT));
+    let stored = capture
+        .body
+        .as_deref()
+        .expect("store_bodies is on, so the uploaded payload should be kept");
+    assert!(
+        stored.contains("pub struct Module"),
+        "the stored body should be the *decompressed* repository text, not the gzip bytes"
+    );
 
     // Now replay the read half of the chain: bulk reads inside a repo, including
     // the git metadata that makes it a "full repository" upload.
@@ -263,6 +273,8 @@ async fn benign_api_call_is_not_flagged() {
             listen: "127.0.0.1:0".parse().unwrap(),
             default_agent: Some("claude-code".to_string()),
             capture_bytes: 1024 * 1024,
+            store_bodies: false,
+            max_body_bytes: 64 * 1024,
         },
         ca.clone(),
         Some(tx),
@@ -299,6 +311,10 @@ async fn benign_api_call_is_not_flagged() {
     .expect("capture arrived");
 
     assert_eq!(capture.class, "text", "a chat request is not source code");
+    assert!(
+        capture.body.is_none(),
+        "with capture_bodies off nothing is retained"
+    );
 
     let mut detector = Detector::new(config, profiles, agentmon_core::dns::DnsState::new());
     let findings = detector.evaluate(

@@ -2,6 +2,7 @@ use agentmon_core::collect::artifacts;
 use agentmon_core::config::Config;
 use agentmon_core::detect::{DetectCtx, Detector};
 use agentmon_core::model::{Event, Finding, FindingStatus, Severity};
+use agentmon_core::paths;
 use agentmon_core::pipeline::Pipeline;
 use agentmon_core::profiles::ProfileSet;
 use agentmon_core::registry::Registry;
@@ -66,6 +67,26 @@ enum Commands {
         /// 包含已忽略的条目
         #[arg(long)]
         all: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// 列出抓到的请求（内容层）
+    Captures {
+        /// 最近 N 条
+        #[arg(long, default_value_t = 20)]
+        limit: i64,
+        /// 只看某个 agent
+        #[arg(long)]
+        agent: Option<String>,
+        /// 输出 JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// 查看某条抓包的请求体原文（需 capture.capture_bodies 开启）
+    Capture {
+        /// 抓包 id（agentmon captures 里的第一列）
+        id: i64,
+        /// 输出 JSON
         #[arg(long)]
         json: bool,
     },
@@ -178,6 +199,8 @@ async fn main() -> Result<()> {
             all,
             json,
         } => cmd_findings(severity, agent, limit, all, json),
+        Commands::Captures { limit, agent, json } => cmd_captures(limit, agent.as_deref(), json),
+        Commands::Capture { id, json } => cmd_capture(id, json),
         Commands::Report { json } => cmd_report(json),
         Commands::Profiles { json } => cmd_profiles(json),
         Commands::Wrap {
@@ -525,6 +548,86 @@ fn cmd_findings(
     Ok(())
 }
 
+fn cmd_captures(limit: i64, agent: Option<&str>, json: bool) -> Result<()> {
+    let path = paths::active_db_path();
+    if !path.exists() {
+        println!("还没有数据：先运行 agentmond 或 agentmon watch");
+        return Ok(());
+    }
+    let conn = store::open_readonly(&path)?;
+    let rows = store::http_requests(&conn, 0, limit.max(1) * 4)?;
+    let rows: Vec<_> = rows
+        .into_iter()
+        .filter(|row| {
+            agent
+                .map(|want| row.agent_id.as_deref() == Some(want))
+                .unwrap_or(true)
+        })
+        .take(limit.max(1) as usize)
+        .collect();
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&rows)?);
+        return Ok(());
+    }
+    if rows.is_empty() {
+        println!("没有抓包记录。内容层需要把 agent 挂到代理上运行：agentmon wrap -- <命令>");
+        return Ok(());
+    }
+
+    let mut table = Table::new();
+    table.set_header(vec![
+        "id", "时间", "agent", "方法", "主机", "路径", "大小", "判定", "原文",
+    ]);
+    for row in &rows {
+        table.add_row(vec![
+            row.id.to_string(),
+            chrono::DateTime::from_timestamp_millis(row.ts)
+                .map(|dt| dt.format("%m-%d %H:%M").to_string())
+                .unwrap_or_else(|| row.ts.to_string()),
+            row.agent_id.clone().unwrap_or_else(|| "-".into()),
+            row.method.clone(),
+            row.host.clone(),
+            truncate_path(&row.path),
+            util::format_bytes(row.bytes_out),
+            row.class.clone(),
+            if row.has_body {
+                "有".into()
+            } else {
+                "-".into()
+            },
+        ]);
+    }
+    println!("{table}");
+    println!(
+        "{}查看某条请求的原文：agentmon capture <id>{}",
+        Ansi::DIM,
+        Ansi::RESET
+    );
+    Ok(())
+}
+
+fn cmd_capture(id: i64, json: bool) -> Result<()> {
+    let path = paths::active_db_path();
+    let conn = store::open_readonly(&path)?;
+    let body = store::http_body(&conn, id)?;
+    match body {
+        None => match store::http_capture_host(&conn, id)? {
+            None => println!("没有 id 为 {id} 的抓包记录"),
+            Some(_) => println!(
+                "这条记录没有保存请求体。默认不落原文（它会原样保存你的 prompt 和源码）。\n\n\
+                 开启方式：在 ~/.config/agentmon/config.yaml 里设置\n\
+                 \x20 capture:\n\
+                 \x20   capture_bodies: true\n\n\
+                 然后重启守护进程，或重新用 agentmon wrap 启动 agent。"
+            ),
+        },
+        Some(body) if json => println!("{}", serde_json::json!({"id": id, "body": body})),
+        Some(body) => println!("{body}"),
+    }
+    Ok(())
+}
+
 fn cmd_report(json: bool) -> Result<()> {
     let path = agentmon_core::paths::active_db_path();
     if !path.exists() {
@@ -734,6 +837,8 @@ async fn cmd_wrap(
             listen: listen_addr,
             default_agent: agent_id.clone(),
             capture_bytes: config.proxy.capture_bytes,
+            store_bodies: config.capture.capture_bodies,
+            max_body_bytes: config.capture.max_body_bytes,
         },
         ca.clone(),
         Some(tx),
@@ -838,6 +943,8 @@ async fn cmd_proxy(listen: Option<String>, agent: Option<String>, json: bool) ->
             listen: listen_addr,
             default_agent: agent,
             capture_bytes: config.proxy.capture_bytes,
+            store_bodies: config.capture.capture_bodies,
+            max_body_bytes: config.capture.max_body_bytes,
         },
         ca.clone(),
         Some(tx),

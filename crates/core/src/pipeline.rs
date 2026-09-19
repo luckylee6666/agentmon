@@ -130,6 +130,8 @@ async fn start_proxy(
         listen,
         default_agent: None,
         capture_bytes: config.proxy.capture_bytes,
+        store_bodies: config.capture.capture_bodies,
+        max_body_bytes: config.capture.max_body_bytes,
     };
     let proxy = crate::proxy::MitmProxy::start(
         options,
