@@ -1,0 +1,76 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  cli:
+    name: cli (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release -p agentmond -p agentmon --target ${{ matrix.target }}
+      - name: Package
+        shell: bash
+        run: |
+          staging="agentmon-${{ matrix.target }}"
+          mkdir -p "$staging"
+          cp "target/${{ matrix.target }}/release/agentmon"* "$staging/"
+          cp README.md LICENSE "$staging/" 2>/dev/null || cp README.md "$staging/"
+          cp -r profiles docs "$staging/"
+          if [[ "${{ matrix.os }}" == windows-* ]]; then
+            7z a "$staging.zip" "$staging" >/dev/null
+            echo "asset=$staging.zip" >> "$GITHUB_ENV"
+          else
+            tar czf "$staging.tar.gz" "$staging"
+            echo "asset=$staging.tar.gz" >> "$GITHUB_ENV"
+          fi
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: ${{ env.asset }}
+          generate_release_notes: true
+
+  desktop:
+    name: desktop bundle
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: crates/app/pnpm-lock.yaml
+      - working-directory: crates/app
+        run: pnpm install --frozen-lockfile
+      - name: Build the app bundle
+        working-directory: crates/app
+        run: pnpm tauri build --bundles dmg
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: crates/app/src-tauri/target/release/bundle/dmg/*.dmg
+          generate_release_notes: true

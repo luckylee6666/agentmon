@@ -1,0 +1,25 @@
+id: cursor-agent
+name: Cursor Agent CLI
+vendor: Anysphere
+process:
+  names: [cursor-agent, Cursor]
+  exe:
+    - "**/cursor-agent"
+    - "cursor-agent"
+    - "**/Cursor.app/Contents/MacOS/**"
+  cmdline_contains:
+    - "cursor-agent"
+data_dirs:
+  - "~/.cursor"
+  - "~/Library/Application Support/Cursor"
+  - "~/.cursor-server"
+config_files:
+  - "~/.cursor/cli-config.json"
+allowed_domains:
+  - "*.cursor.sh"
+  - "cursor.sh"
+  - "*.cursor.com"
+  - "cursor.com"
+telemetry_domains:
+  - "*.sentry.io"
+notes: "IDE 与 CLI 共用账号；~/.cursor 下有会话与索引缓存"

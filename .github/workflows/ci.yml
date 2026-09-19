@@ -1,0 +1,61 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build agentmon-core, agentmond, agentmon
+        run: cargo build --release -p agentmon-core -p agentmond -p agentmon
+      - name: Run tests
+        run: cargo test -p agentmon-core
+
+  desktop:
+    name: desktop app
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: crates/app/pnpm-lock.yaml
+      - name: Install frontend dependencies
+        working-directory: crates/app
+        run: pnpm install --frozen-lockfile
+      - name: Type check and build the UI
+        working-directory: crates/app
+        run: pnpm build
+      - uses: Swatinem/rust-cache@v2
+      - name: Build the Tauri app
+        run: cargo build -p agentmon-app
+
+  lint:
+    name: lint
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: rustfmt
+        run: cargo fmt --all --check
+      - name: clippy
+        run: cargo clippy --all-targets

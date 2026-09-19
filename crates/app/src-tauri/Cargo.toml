@@ -1,0 +1,22 @@
+[package]
+name = "agentmon-app"
+version = "0.1.0"
+description = "agentmon desktop app — audit what your AI coding agents read and upload"
+authors = ["lucky"]
+edition = "2024"
+
+[lib]
+# The `_lib` suffix keeps the library target unique from the binary target.
+name = "agentmon_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+agentmon-core = { version = "0.1.0", path = "../../core" }

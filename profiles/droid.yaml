@@ -1,0 +1,21 @@
+id: droid
+name: Droid
+vendor: Factory AI
+process:
+  names: [droid]
+  exe:
+    - "**/droid"
+    - "droid"
+  cmdline_contains:
+    - "@factory-ai/droid"
+data_dirs:
+  - "~/.factory"
+config_files:
+  - "~/.factory/config.json"
+allowed_domains:
+  - "*.factory.ai"
+  - "factory.ai"
+  - "app.factory.ai"
+telemetry_domains:
+  - "*.sentry.io"
+notes: ""

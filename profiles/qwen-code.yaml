@@ -1,0 +1,23 @@
+id: qwen-code
+name: Qwen Code
+vendor: Alibaba
+process:
+  names: [qwen]
+  exe:
+    - "**/qwen"
+    - "qwen"
+  cmdline_contains:
+    - "@qwen-code/qwen-code"
+    - "qwen-code"
+data_dirs:
+  - "~/.qwen"
+config_files:
+  - "~/.qwen/settings.json"
+allowed_domains:
+  - "dashscope.aliyuncs.com"
+  - "dashscope-intl.aliyuncs.com"
+  - "*.aliyuncs.com"
+  - "portal.qwen.ai"
+  - "*.qwen.ai"
+telemetry_domains: []
+notes: "Gemini CLI fork，目录结构相近"

@@ -1,0 +1,22 @@
+id: goose
+name: Goose
+vendor: Block
+process:
+  names: [goose]
+  exe:
+    - "**/goose"
+    - "goose"
+data_dirs:
+  - "~/.config/goose"
+  - "~/.local/share/goose"
+config_files:
+  - "~/.config/goose/config.yaml"
+allowed_domains:
+  - "*.anthropic.com"
+  - "*.openai.com"
+  - "*.googleapis.com"
+  - "openrouter.ai"
+  - "*.block.xyz"
+telemetry_domains:
+  - "*.sentry.io"
+notes: ""

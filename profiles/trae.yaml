@@ -1,0 +1,18 @@
+id: trae
+name: Trae
+vendor: ByteDance
+process:
+  names: [Trae, trae]
+  exe:
+    - "**/Trae.app/Contents/MacOS/**"
+    - "**/trae"
+data_dirs:
+  - "~/Library/Application Support/Trae"
+  - "~/.trae"
+allowed_domains:
+  - "*.trae.ai"
+  - "trae.ai"
+  - "*.trae.com.cn"
+  - "trae.com.cn"
+telemetry_domains: []
+notes: "Electron 客户端"

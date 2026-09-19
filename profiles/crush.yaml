@@ -1,0 +1,23 @@
+id: crush
+name: Crush
+vendor: Charm
+process:
+  names: [crush]
+  exe:
+    - "**/crush"
+    - "crush"
+data_dirs:
+  - "~/.config/crush"
+  - "~/.local/share/crush"
+config_files:
+  - "~/.config/crush/crush.json"
+allowed_domains:
+  - "*.anthropic.com"
+  - "*.openai.com"
+  - "openrouter.ai"
+  - "*.googleapis.com"
+  - "*.groq.com"
+  - "*.deepseek.com"
+telemetry_domains:
+  - "*.charm.sh"
+notes: "多提供商终端 agent"

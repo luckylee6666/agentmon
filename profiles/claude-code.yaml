@@ -1,0 +1,27 @@
+id: claude-code
+name: Claude Code
+vendor: Anthropic
+process:
+  names: [claude]
+  exe:
+    - "**/claude"
+    - "claude"
+    - "**/.claude/local/claude"
+    - "**/claude-code/**"
+  cmdline_contains:
+    - "@anthropic-ai/claude-code"
+    - "claude-code/cli.js"
+data_dirs:
+  - "~/.claude"
+config_files:
+  - "~/.claude.json"
+  - "~/.claude/settings.json"
+  - "~/.claude/settings.local.json"
+allowed_domains:
+  - "*.anthropic.com"
+  - "anthropic.com"
+  - "claude.ai"
+telemetry_domains:
+  - "*.sentry.io"
+  - "*.statsig.com"
+notes: "会话记录位于 ~/.claude/projects；官方声明代码仅用于推理，不作为训练数据"

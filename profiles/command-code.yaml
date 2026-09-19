@@ -1,0 +1,20 @@
+id: command-code
+name: Command Code
+vendor: Command Code
+process:
+  names: [command-code, cmd]
+  exe:
+    - "**/command-code/**"
+    - "**/command-code"
+  cmdline_contains:
+    - "command-code"
+    - "commandcode"
+data_dirs:
+  - "~/.commandcode"
+config_files:
+  - "~/.commandcode/config.json"
+allowed_domains:
+  - "*.commandcode.ai"
+  - "commandcode.ai"
+telemetry_domains: []
+notes: ""

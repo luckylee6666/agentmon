@@ -1,0 +1,37 @@
+[package]
+name = "agentmon-core"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.104"
+bytes = "1.12.1"
+chrono = { version = "0.4.45", features = ["serde"] }
+directories = "6.0.0"
+dns-lookup = "4.0.1"
+flate2 = "1.1.10"
+futures-util = "0.3.34"
+globset = "0.4.20"
+http-body-util = "0.1.5"
+hyper = "1.11.1"
+hyper-util = { version = "0.1.20", features = ["server-auto"] }
+libc = "0.2.189"
+notify-rust = "4.18.0"
+rcgen = { version = "0.14.10", features = ["pem", "x509-parser"] }
+regex = "1.13.1"
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "json", "stream"] }
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+rustls = "0.23.45"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+serde_norway = "0.9.42"
+sha2 = "0.11.0"
+sysinfo = "0.39.6"
+thiserror = "2.0.20"
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "sync", "time", "process", "signal", "fs", "io-util"] }
+tokio-rustls = "0.26.5"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+portable-pty = "0.9.0"

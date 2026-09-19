@@ -1,0 +1,21 @@
+id: iflow-cli
+name: iFlow CLI
+vendor: 心流 AI
+process:
+  names: [iflow]
+  exe:
+    - "**/iflow"
+    - "iflow"
+  cmdline_contains:
+    - "@iflow-ai/iflow-cli"
+    - "iflow-cli"
+data_dirs:
+  - "~/.iflow"
+config_files:
+  - "~/.iflow/settings.json"
+allowed_domains:
+  - "*.iflow.cn"
+  - "iflow.cn"
+  - "platform.iflow.cn"
+telemetry_domains: []
+notes: ""

@@ -1,0 +1,25 @@
+id: codex-cli
+name: Codex CLI
+vendor: OpenAI
+process:
+  names: [codex]
+  exe:
+    - "**/codex"
+    - "codex"
+    - "**/@openai/codex/**"
+  cmdline_contains:
+    - "@openai/codex"
+data_dirs:
+  - "~/.codex"
+config_files:
+  - "~/.codex/config.toml"
+  - "~/.codex/auth.json"
+allowed_domains:
+  - "*.openai.com"
+  - "openai.com"
+  - "chatgpt.com"
+  - "*.oaistatic.com"
+  - "*.oaiusercontent.com"
+telemetry_domains:
+  - "*.sentry.io"
+notes: "Sessions and rollout logs live in ~/.codex/sessions"

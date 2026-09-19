@@ -1,0 +1,36 @@
+launchd.1                                                                                                    0               0
+syslogd.617                                                                                                  0             759
+apsd.624                                                                                                  6645           30190
+airportd.709                                                                                                 0               0
+cupsd.720                                                                                                    0               0
+syspolicyd.744                                                                                           24901           14467
+mDNSResponder.747                                                                                       591302          311036
+wifip2pd.830                                                                                                 0               0
+wifianalyticsd.835                                                                                           0               0
+tailscaled.882                                                                                          102591           34837
+wifivelocityd.902                                                                                            0               0
+netbiosd.1014                                                                                             2562            2682
+identityservice.1044                                                                                         0               0
+rapportd.1055                                                                                            18329           28835
+sharingd.1072                                                                                                0               0
+replicatord.1135                                                                                             0               0
+Feishu.1327                                                                                              62233           73273
+Xiaomi MiMo.1329                                                                                      17832848        17832848
+WeChat.1331                                                                                               5661            5776
+ControlCenter.1336                                                                                           0               0
+SogouInput.1376                                                                                          55531           94052
+Lark Helper.1422                                                                                          6466            4540
+Lark Helper.1438                                                                                        604810         8466299
+Codex (Service).1476                                                                                    280437          417583
+Xiaomi MiMo Hel.2176                                                                                   1291141       166949013
+codex.2536                                                                                                5977           30839
+redis-server.2837                                                                                            0               0
+postgres.2851                                                                                                0               0
+python3.11.2852                                                                                         539961         1039598
+mDNSResponder.747                                                                                       593006          312425
+codex.2536                                                                                                5977           30839
+syslogd.617                                                                                                  0             759
+mDNSResponder.747                                                                                       593682          312695
+codex.2536                                                                                                5977           30839
+syslogd.617                                                                                                  0             759
+state        bytes_in       bytes_out

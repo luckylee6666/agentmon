@@ -1,0 +1,25 @@
+id: gemini-cli
+name: Gemini CLI
+vendor: Google
+process:
+  names: [gemini]
+  exe:
+    - "**/gemini"
+    - "gemini"
+  cmdline_contains:
+    - "@google/gemini-cli"
+data_dirs:
+  - "~/.gemini"
+config_files:
+  - "~/.gemini/settings.json"
+allowed_domains:
+  - "cloudcode-pa.googleapis.com"
+  - "generativelanguage.googleapis.com"
+  - "*.googleapis.com"
+  - "accounts.google.com"
+  - "oauth2.googleapis.com"
+  - "*.googleusercontent.com"
+telemetry_domains:
+  - "*.google-analytics.com"
+  - "play.google.com"
+notes: "Project history stored in ~/.gemini/tmp"

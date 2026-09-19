@@ -1,0 +1,26 @@
+id: aider
+name: Aider
+vendor: Paul Gauthier
+process:
+  names: [aider]
+  exe:
+    - "**/aider"
+    - "aider"
+  cmdline_contains:
+    - "aider"
+data_dirs:
+  - "~/.aider"
+  - "~/.config/aider"
+config_files:
+  - "~/.aider.conf.yml"
+  - "~/.aider.model.settings.yml"
+allowed_domains:
+  - "openrouter.ai"
+  - "*.openrouter.ai"
+  - "*.openai.com"
+  - "*.anthropic.com"
+  - "*.googleapis.com"
+  - "*.deepseek.com"
+telemetry_domains:
+  - "*.sentry.io"
+notes: "本地 .aider.tags.cache 存放仓库映射缓存"

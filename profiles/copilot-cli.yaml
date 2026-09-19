@@ -1,0 +1,22 @@
+id: copilot-cli
+name: GitHub Copilot CLI
+vendor: GitHub
+process:
+  names: [copilot]
+  exe:
+    - "**/copilot"
+    - "copilot"
+  cmdline_contains:
+    - "@github/copilot"
+data_dirs:
+  - "~/.copilot"
+  - "~/.config/github-copilot"
+allowed_domains:
+  - "*.githubcopilot.com"
+  - "api.github.com"
+  - "github.com"
+  - "*.githubusercontent.com"
+  - "*.github.com"
+telemetry_domains:
+  - "*.sentry.io"
+notes: ""

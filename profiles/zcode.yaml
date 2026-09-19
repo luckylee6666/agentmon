@@ -1,0 +1,24 @@
+id: zcode
+name: ZCode
+vendor: 智谱 AI
+process:
+  names: [zcode, ZCode]
+  exe:
+    - "**/ZCode.app/Contents/MacOS/**"
+    - "**/zcode"
+    - "zcode"
+data_dirs:
+  - "~/Library/Application Support/ZCode"
+  - "~/Library/Logs/ZCode"
+  - "~/.zcode"
+config_files:
+  - "~/Library/Application Support/ZCode/config.json"
+allowed_domains:
+  - "*.z.ai"
+  - "z.ai"
+  - "open.bigmodel.cn"
+  - "*.bigmodel.cn"
+  - "*.zhipuai.cn"
+  - "chatglm.cn"
+telemetry_domains: []
+notes: "2026-09 事件：仓库索引功能默认开启，静默打包上传整个仓库（含 .git）。上传行为在 ~/Library/Application Support/ZCode 下留有大体积加密包"

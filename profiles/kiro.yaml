@@ -1,0 +1,21 @@
+id: kiro
+name: Kiro
+vendor: AWS
+process:
+  names: [Kiro, kiro]
+  exe:
+    - "**/Kiro.app/Contents/MacOS/**"
+    - "**/kiro-cli"
+data_dirs:
+  - "~/Library/Application Support/Kiro"
+  - "~/.kiro"
+allowed_domains:
+  - "*.kiro.dev"
+  - "kiro.dev"
+  - "*.amazonaws.com"
+  - "*.aws.dev"
+  - "*.awsapps.com"
+  - "*.amazon.com"
+telemetry_domains:
+  - "*.sentry.io"
+notes: "Electron 客户端 + kiro-cli"

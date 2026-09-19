@@ -1,0 +1,20 @@
+id: windsurf
+name: Windsurf
+vendor: Codeium
+process:
+  names: [Windsurf, windsurf]
+  exe:
+    - "**/Windsurf.app/Contents/MacOS/**"
+    - "**/windsurf"
+data_dirs:
+  - "~/Library/Application Support/Windsurf"
+  - "~/.codeium"
+  - "~/.windsurf"
+allowed_domains:
+  - "*.codeium.com"
+  - "codeium.com"
+  - "*.windsurf.com"
+  - "windsurf.com"
+telemetry_domains:
+  - "*.sentry.io"
+notes: "Electron 客户端；~/.codeium 下有本地索引缓存"

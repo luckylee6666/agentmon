@@ -1,0 +1,23 @@
+id: opencode
+name: OpenCode
+vendor: SST
+process:
+  names: [opencode]
+  exe:
+    - "**/opencode"
+    - "opencode"
+data_dirs:
+  - "~/.local/share/opencode"
+  - "~/.config/opencode"
+config_files:
+  - "~/.config/opencode/opencode.json"
+allowed_domains:
+  - "*.anthropic.com"
+  - "*.openai.com"
+  - "openrouter.ai"
+  - "*.openrouter.ai"
+  - "*.googleapis.com"
+  - "*.githubcopilot.com"
+  - "models.dev"
+telemetry_domains: []
+notes: "多提供商客户端；实际出站域名取决于所选模型服务商，白名单按配置放宽"
