@@ -34,6 +34,9 @@ pub struct Detector {
     volume: HashMap<String, VecDeque<(i64, u64)>>,
     reads: HashMap<String, VecDeque<(i64, PathBuf)>>,
     read_signal: HashMap<String, (i64, Vec<Evidence>)>,
+    /// Recent destinations per agent. Byte counters carry no payload, so this
+    /// is the closest the metadata layer gets to attributing a spike.
+    recent_dests: HashMap<String, VecDeque<(i64, String)>>,
     dedupe: HashMap<String, i64>,
     last_gc: i64,
     warned_fake_ip: bool,
@@ -50,6 +53,7 @@ impl Detector {
             volume: HashMap::new(),
             reads: HashMap::new(),
             read_signal: HashMap::new(),
+            recent_dests: HashMap::new(),
             dedupe: HashMap::new(),
             last_gc: util::now_ms(),
             warned_fake_ip: false,
@@ -75,6 +79,18 @@ impl Detector {
         let Some(ip) = conn.remote_ip.clone() else {
             return Vec::new();
         };
+
+        if let Some(label) = conn.remote_host.clone().or_else(|| conn.remote_ip.clone()) {
+            let entry = self.recent_dests.entry(agent_id.clone()).or_default();
+            entry.push_back((conn.ts, label));
+            let cutoff = conn.ts - self.config.thresholds.volume_spike_window_ms;
+            while entry.front().map(|(ts, _)| *ts < cutoff).unwrap_or(false) {
+                entry.pop_front();
+            }
+            while entry.len() > 64 {
+                entry.pop_front();
+            }
+        }
         if util::is_private_ip(&ip) {
             return Vec::new();
         }
@@ -155,21 +171,41 @@ impl Detector {
                     RULE_VOLUME_SPIKE,
                     Severity::Medium,
                     format!("{agent_id} 上传量突增"),
-                    format!(
-                        "{} 分钟窗口内该 agent 出站 {}，超过阈值 {}",
-                        self.config.thresholds.volume_spike_window_ms / 60_000,
-                        util::format_bytes(total),
-                        util::format_bytes(self.config.thresholds.volume_spike_bytes)
-                    ),
+                    {
+                        let dests = self.window_destinations(&agent_id, volume.ts);
+                        let mut text = format!(
+                            "{} 分钟窗口内该 agent 出站 {}，超过阈值 {}",
+                            self.config.thresholds.volume_spike_window_ms / 60_000,
+                            util::format_bytes(total),
+                            util::format_bytes(self.config.thresholds.volume_spike_bytes)
+                        );
+                        if dests.is_empty() {
+                            text.push_str(
+                                "。字节计数器不含载荷，无法指出具体是哪些文件；需要文件级归属请启用文件层（root 守护进程）或用 agentmon wrap 走内容层",
+                            );
+                        } else {
+                            text.push_str(&format!("；窗口内目标：{}", dests.join("、")));
+                            text.push_str(
+                                "。字节计数器不含载荷，文件级归属需文件层（root）或 agentmon wrap",
+                            );
+                        }
+                        text
+                    },
                 )
                 .with_agent(Some(agent_id.clone()))
                 .with_pid(Some(volume.pid))
                 .with_dedupe(agent_id.clone())
-                .with_evidence(vec![Evidence::at(
-                    volume.ts,
-                    "upload",
-                    format!("本窗口出站 {}", util::format_bytes(total)),
-                )]),
+                .with_evidence({
+                    let mut evidence = vec![Evidence::at(
+                        volume.ts,
+                        "upload",
+                        format!("本窗口出站 {}", util::format_bytes(total)),
+                    )];
+                    for dest in self.window_destinations(&agent_id, volume.ts) {
+                        evidence.push(Evidence::at(volume.ts, "destination", dest));
+                    }
+                    evidence
+                }),
             );
         }
 
@@ -186,6 +222,20 @@ impl Detector {
         }
 
         findings
+    }
+
+    fn window_destinations(&self, agent_id: &str, ts: i64) -> Vec<String> {
+        let cutoff = ts - self.config.thresholds.volume_spike_window_ms;
+        let mut seen: Vec<String> = Vec::new();
+        if let Some(entry) = self.recent_dests.get(agent_id) {
+            for (dest_ts, dest) in entry {
+                if *dest_ts >= cutoff && !seen.contains(dest) {
+                    seen.push(dest.clone());
+                }
+            }
+        }
+        seen.truncate(6);
+        seen
     }
 
     /// The core rule: a sensitive/bulk read followed closely by a significant
@@ -694,6 +744,62 @@ mod tests {
         let findings = detector.evaluate(&file("zcode", "/Users/me/proj/.env", now), ctx);
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].rule_id, RULE_SENSITIVE_READ);
+    }
+
+    #[test]
+    fn volume_spike_names_the_destinations_in_its_window() {
+        let mut detector = detector();
+        let registry = Registry::new();
+        let ctx = DetectCtx {
+            registry: &registry,
+        };
+        let now = util::now_ms();
+
+        let conn = ConnectionSample {
+            ts: now - 2_000,
+            pid: 4242,
+            agent_id: Some("opencode".into()),
+            remote_addr: "203.0.113.9:443".into(),
+            remote_ip: Some("203.0.113.9".into()),
+            remote_port: Some(443),
+            remote_host: Some("api.vendor.example".into()),
+            proto: "TCP".into(),
+        };
+        detector.evaluate(&Event::Connection(conn), ctx);
+
+        let mut findings = Vec::new();
+        for i in 0..5 {
+            let volume = VolumeSample {
+                ts: now - 4_000 + i * 1_000,
+                pid: 4242,
+                agent_id: Some("opencode".into()),
+                bytes_in: 0,
+                bytes_out: 6 * 1024 * 1024,
+                window_ms: 1_000,
+            };
+            findings.extend(detector.evaluate(&Event::Volume(volume), ctx));
+        }
+
+        let spike = findings
+            .iter()
+            .find(|finding| finding.rule_id == RULE_VOLUME_SPIKE)
+            .expect("spike should fire at 30MB in a 5 minute window");
+        assert!(
+            spike.detail.contains("api.vendor.example"),
+            "detail should name the destination: {}",
+            spike.detail
+        );
+        assert!(
+            spike
+                .evidence
+                .iter()
+                .any(|item| item.kind == "destination" && item.summary == "api.vendor.example"),
+            "destination should also appear as evidence"
+        );
+        assert!(
+            spike.detail.contains("wrap"),
+            "and it should say how to get file level attribution"
+        );
     }
 
     #[test]
