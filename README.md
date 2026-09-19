@@ -79,9 +79,17 @@ sudo ./target/release/agentmon install
 ```bash
 cd crates/app
 pnpm install
-pnpm tauri dev      # 开发模式
+pnpm tauri dev      # 开发模式（会自动起 Vite）
 pnpm tauri build    # 打包 dmg / msi / AppImage
 ```
+
+想在浏览器里调界面（不启动 Tauri）直接 `pnpm dev`：检测不到 Tauri 桥接时
+界面会用 `src/mock.ts` 的样例数据渲染，方便调样式；打包出的应用永远走真实数据。
+页面支持 hash 深链接，例如 `#findings`、`#content`。
+
+> 注意：直接跑 debug 二进制（`cargo build -p agentmon-app`）会去加载
+> `http://localhost:1420` 的开发服务器，窗口会空白；调试用 `pnpm tauri dev`，
+> 独立运行用 `cargo build --release -p agentmon-app`（资源会嵌进二进制）。
 
 ## 数据与隐私
 

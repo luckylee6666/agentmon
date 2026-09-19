@@ -1,141 +1,64 @@
 import { invoke } from "@tauri-apps/api/core";
+import * as mock from "./mock";
+import type {
+  ArtifactRow,
+  Destination,
+  FileEventRow,
+  Finding,
+  HttpRow,
+  Overview,
+  ProfileDto,
+  VolumePoint,
+} from "./types";
 
-export type Severity = "info" | "low" | "medium" | "high" | "critical";
+export * from "./types";
 
-export interface Evidence {
-  ts: number;
-  kind: string;
-  summary: string;
-  detail?: string | null;
+/** True when running inside the Tauri webview rather than a plain browser. */
+export const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+/** In a plain browser (`pnpm dev` without Tauri) the UI renders sample data. */
+function fallback<T>(value: T): Promise<T> {
+  return Promise.resolve(value);
 }
 
-export interface Finding {
-  id?: number | null;
-  ts: number;
-  rule_id: string;
-  severity: Severity;
-  title: string;
-  detail: string;
-  agent_id?: string | null;
-  pid?: number | null;
-  evidence: Evidence[];
-  status: "open" | "ignored";
-  dedupe_key?: string | null;
-}
-
-export interface AgentDto {
-  id: string;
-  name: string;
-  vendor: string;
-  last_seen: number;
-  bytes_out_24h: number;
-  open_findings: number;
-  worst_severity?: Severity | null;
-  installed: boolean;
-  data_dir_bytes: number;
-}
-
-export interface VolumePoint {
-  bucket: number;
-  bytes_out: number;
-  bytes_in: number;
-}
-
-export interface Destination {
-  agent_id?: string | null;
-  host: string;
-  connections: number;
-  first_seen: number;
-  last_seen: number;
-  allowed: boolean;
-}
-
-export interface ArtifactRow {
-  ts: number;
-  agent_id: string;
-  path: string;
-  size: number;
-  entropy: number;
-  kind: string;
-  detail: string;
-}
-
-export interface FileEventRow {
-  ts: number;
-  pid: number;
-  agent_id?: string | null;
-  path: string;
-  op: string;
-}
-
-export interface HttpRow {
-  ts: number;
-  agent_id?: string | null;
-  host: string;
-  method: string;
-  path: string;
-  bytes_out: number;
-  class: string;
-  sample?: string | null;
-}
-
-export interface DbInfo {
-  path: string;
-  exists: boolean;
-  system: boolean;
-  daemon_active: boolean;
-  file_audit: boolean;
-  proxy_addr?: string | null;
-  db_size: number;
-  version: string;
-}
-
-export interface Stats {
-  agents_seen: number;
-  connections_24h: number;
-  file_events_24h: number;
-  http_requests_24h: number;
-  volume_samples_24h: number;
-  bytes_out_24h: number;
-}
-
-export interface Overview {
-  info: DbInfo;
-  stats: Stats;
-  agents: AgentDto[];
-  findings: Finding[];
-  volume: VolumePoint[];
-  destinations: Destination[];
-  artifacts: ArtifactRow[];
-}
-
-export interface ProfileDto {
-  id: string;
-  name: string;
-  vendor: string;
-  installed: boolean;
-  data_dirs: string[];
-  allowed_domains: string[];
-  telemetry_domains: string[];
-  notes?: string | null;
-}
+const call = <T>(command: string, args?: Record<string, unknown>, sample?: T): Promise<T> => {
+  if (!isTauri) {
+    if (sample === undefined) {
+      return Promise.reject(new Error("not running inside Tauri"));
+    }
+    return fallback(sample);
+  }
+  return invoke<T>(command, args);
+};
 
 export const api = {
-  overview: (sinceMs?: number) => invoke<Overview>("get_overview", { sinceMs }),
+  overview: (sinceMs?: number) => call<Overview>("get_overview", { sinceMs }, mock.mockOverview),
   findings: (opts: { limit?: number; severity?: string; agentId?: string; includeIgnored?: boolean }) =>
-    invoke<Finding[]>("list_findings", opts),
-  setIgnored: (id: number, ignored: boolean) => invoke<void>("set_finding_ignored", { id, ignored }),
+    call<Finding[]>(
+      "list_findings",
+      opts,
+      opts.includeIgnored ? mock.mockFindings.map((f) => ({ ...f, status: "ignored" as const })) : mock.mockFindings,
+    ),
+  setIgnored: (id: number, ignored: boolean) => call<void>("set_finding_ignored", { id, ignored }, undefined),
   fileEvents: (agentId?: string, sinceMs?: number, limit?: number) =>
-    invoke<FileEventRow[]>("list_file_events", { agentId, sinceMs, limit }),
+    call<FileEventRow[]>("list_file_events", { agentId, sinceMs, limit }, mock.mockFileEvents),
   httpRequests: (sinceMs?: number, limit?: number) =>
-    invoke<HttpRow[]>("list_http_requests", { sinceMs, limit }),
-  artifacts: (limit?: number) => invoke<ArtifactRow[]>("list_artifacts", { limit }),
+    call<HttpRow[]>("list_http_requests", { sinceMs, limit }, mock.mockHttp),
+  artifacts: (limit?: number) => call<ArtifactRow[]>("list_artifacts", { limit }, mock.mockArtifacts),
   egress: (sinceMs?: number, bucketMs?: number, agentId?: string) =>
-    invoke<VolumePoint[]>("egress", { sinceMs, bucketMs, agentId }),
+    call<VolumePoint[]>("egress", { sinceMs, bucketMs, agentId }, mock.mockVolume),
   destinations: (sinceMs?: number, limit?: number) =>
-    invoke<Destination[]>("destinations", { sinceMs, limit }),
-  runScan: (deep?: boolean) => invoke<Finding[]>("run_scan", { deep }),
-  profiles: () => invoke<ProfileDto[]>("list_agent_profiles"),
-  paths: () => invoke<Record<string, string>>("paths_info"),
-  config: () => invoke<Record<string, unknown>>("get_config"),
+    call<Destination[]>("destinations", { sinceMs, limit }, mock.mockDestinations),
+  runScan: (deep?: boolean) => call<Finding[]>("run_scan", { deep }, mock.mockFindings.slice(0, 3)),
+  profiles: () => call<ProfileDto[]>("list_agent_profiles", {}, mock.mockProfiles),
+  paths: () =>
+    call<Record<string, string>>("paths_info", {}, {
+      config: "/Users/dev/.config/agentmon/config.yaml",
+      profiles_dir: "/Users/dev/.config/agentmon/profiles.d",
+      db_user: "/Users/dev/Library/Application Support/agentmon/agentmon.db",
+      db_system: "/Library/Application Support/agentmon/agentmon.db",
+      data_dir_user: "/Users/dev/Library/Application Support/agentmon",
+      data_dir_system: "/Library/Application Support/agentmon",
+    }),
+  config: () => call<Record<string, unknown>>("get_config", {}, {}),
 };
