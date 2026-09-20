@@ -25,6 +25,7 @@ pub struct DbInfo {
     pub system: bool,
     pub daemon_active: bool,
     pub file_audit: bool,
+    pub db_readable: bool,
     pub proxy_addr: Option<String>,
     pub db_size: u64,
     pub version: String,
@@ -109,6 +110,7 @@ fn db_info() -> DbInfo {
     } else {
         None
     };
+    let db_readable = exists && store::open_readonly(&active).is_ok();
     let file_audit = if exists {
         store::open_readonly(&active)
             .ok()
@@ -124,6 +126,7 @@ fn db_info() -> DbInfo {
         system: active == system,
         daemon_active,
         file_audit,
+        db_readable,
         proxy_addr,
         db_size: std::fs::metadata(&active).map(|m| m.len()).unwrap_or(0),
         version: agentmon_core::VERSION.to_string(),

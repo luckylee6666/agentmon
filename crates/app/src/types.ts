@@ -85,6 +85,7 @@ export interface DbInfo {
   system: boolean;
   daemon_active: boolean;
   file_audit: boolean;
+  db_readable: boolean;
   proxy_addr?: string | null;
   db_size: number;
   version: string;

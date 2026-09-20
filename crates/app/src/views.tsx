@@ -591,9 +591,20 @@ function DaemonPanel() {
           </div>
         )}
 
+        {installed && status && !status.running && (
+          <div className="notice err" style={{ marginTop: 10 }}>
+            已安装但当前未运行。执行 <span className="mono">sudo launchctl kickstart -k system/ai.agentmon.agentmond</span> 可重启。
+          </div>
+        )}
+
         {message && (
           <div className={`notice ${message.kind}`} style={{ marginTop: 10 }}>
             {message.text}
+            {message.kind === "ok" && !installed && (
+              <div className="muted" style={{ marginTop: 6, fontSize: 11 }}>
+                组成员身份需要重新登录一次才生效；在那之前桌面端读不到系统数据库。
+              </div>
+            )}
           </div>
         )}
 
