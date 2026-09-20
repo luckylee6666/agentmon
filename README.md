@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo/mark-256.png" width="120" alt="agentmon">
+</p>
+
 # agentmon
 
 检测 AI 编程 agent（Claude Code / Codex CLI / **ZCode** / Cursor / Gemini CLI / Qwen Code / iFlow …）

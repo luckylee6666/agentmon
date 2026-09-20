@@ -5,3 +5,7 @@ dist/
 .DS_Store
 .commandcode/
 .memory/
+
+# Tauri 生成的移动端图标，本项目只做桌面端
+crates/app/src-tauri/icons/android/
+crates/app/src-tauri/icons/ios/
