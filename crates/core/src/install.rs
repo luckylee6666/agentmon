@@ -1,5 +1,5 @@
-use agentmon_core::paths;
-use agentmon_core::util::Ansi;
+use crate::paths;
+use crate::util::Ansi;
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -40,6 +40,118 @@ pub enum Step {
         ignore_failure: bool,
     },
     Remove(PathBuf),
+}
+
+/// The plan a caller can render, show to the user, or execute directly.
+pub fn plan_install(opts: &InstallOptions) -> Result<Vec<Step>> {
+    let binary = daemon_binary(opts)?;
+    let user = invoking_user(&opts.user);
+    build_plan(opts, &binary, &user)
+}
+
+pub fn plan_uninstall() -> Vec<Step> {
+    build_uninstall_plan()
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+/// Renders a plan as a POSIX shell script. The desktop app runs this through
+/// `osascript ... with administrator privileges`, so every path is quoted and
+/// nothing here may come from the UI.
+pub fn render_script(steps: &[Step]) -> String {
+    let mut out = String::from("set -e\n");
+    for step in steps {
+        match step {
+            Step::Note(text) => out.push_str(&format!("# {text}\n")),
+            Step::EnsureDir { path, mode, group } => {
+                out.push_str(&format!(
+                    "mkdir -p {}\n",
+                    shell_quote(&path.display().to_string())
+                ));
+                out.push_str(&format!(
+                    "chmod {mode:o} {}\n",
+                    shell_quote(&path.display().to_string())
+                ));
+                if let Some(group) = group {
+                    out.push_str(&format!(
+                        "chgrp {} {} 2>/dev/null || true\n",
+                        shell_quote(group),
+                        shell_quote(&path.display().to_string())
+                    ));
+                }
+            }
+            Step::WriteFile {
+                path,
+                mode,
+                contents,
+            } => {
+                out.push_str(&format!(
+                    "cat > {} <<'AGENTMON_EOF'\n",
+                    shell_quote(&path.display().to_string())
+                ));
+                out.push_str(contents);
+                if !contents.ends_with('\n') {
+                    out.push('\n');
+                }
+                out.push_str("AGENTMON_EOF\n");
+                out.push_str(&format!(
+                    "chmod {mode:o} {}\n",
+                    shell_quote(&path.display().to_string())
+                ));
+            }
+            Step::CopyFile { from, to, mode } => {
+                out.push_str(&format!(
+                    "cp -f {} {}\n",
+                    shell_quote(&from.display().to_string()),
+                    shell_quote(&to.display().to_string())
+                ));
+                out.push_str(&format!(
+                    "chmod {mode:o} {}\n",
+                    shell_quote(&to.display().to_string())
+                ));
+            }
+            Step::Run {
+                program,
+                args,
+                ignore_failure,
+            } => {
+                let mut line = shell_quote(program);
+                for arg in args {
+                    line.push(' ');
+                    line.push_str(&shell_quote(arg));
+                }
+                if *ignore_failure {
+                    line.push_str(" || true");
+                }
+                out.push_str(&line);
+                out.push('\n');
+            }
+            Step::Remove(path) => {
+                out.push_str(&format!(
+                    "rm -rf {}\n",
+                    shell_quote(&path.display().to_string())
+                ));
+            }
+        }
+    }
+    out
+}
+
+/// Human readable one-liners for a confirmation prompt.
+pub fn describe(steps: &[Step]) -> Vec<String> {
+    steps
+        .iter()
+        .filter_map(|step| match step {
+            Step::Note(text) => Some(text.clone()),
+            Step::CopyFile { to, .. } => Some(format!("复制二进制到 {}", to.display())),
+            Step::WriteFile { path, .. } => Some(format!("写入 {}", path.display())),
+            Step::EnsureDir { path, .. } => Some(format!("准备目录 {}", path.display())),
+            Step::Remove(path) => Some(format!("删除 {}", path.display())),
+            Step::Run { .. } => None,
+        })
+        .collect()
 }
 
 fn invoking_user(explicit: &Option<String>) -> String {
@@ -245,7 +357,7 @@ pub fn group_id(_name: &str) -> Option<u32> {
 }
 
 pub fn install(opts: InstallOptions) -> Result<()> {
-    if !opts.dry_run && !cfg!(windows) && !agentmon_core::util::is_root() {
+    if !opts.dry_run && !cfg!(windows) && !crate::util::is_root() {
         anyhow::bail!("安装系统级守护进程需要 root：请用 sudo 运行（或先 --dry-run 看看会做什么）");
     }
     let binary = daemon_binary(&opts)?;
@@ -557,8 +669,92 @@ WantedBy=multi-user.target
     )
 }
 
+/// Structured view for the desktop app: no printing, no privileges needed.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ServiceStatus {
+    pub installed: bool,
+    pub running: bool,
+    pub binary_present: bool,
+    pub unit_path: String,
+    pub managed_binary: String,
+    pub detail: String,
+    pub root: bool,
+}
+
+pub fn service_status() -> ServiceStatus {
+    let root = crate::util::is_root();
+    let managed = managed_binary_path();
+    let binary_present = managed.exists();
+
+    #[cfg(target_os = "macos")]
+    {
+        let unit = paths::launchd_plist_path();
+        let installed = unit.exists();
+        let (running, detail) = match Command::new("launchctl")
+            .args(["print", &format!("system/{SERVICE_LABEL}")])
+            .output()
+        {
+            Ok(output) if output.status.success() => {
+                let text = String::from_utf8_lossy(&output.stdout);
+                let state = text
+                    .lines()
+                    .find(|line| line.contains("state ="))
+                    .map(|line| line.trim().trim_start_matches("state = ").to_string())
+                    .unwrap_or_else(|| "已加载".into());
+                (state == "running", state)
+            }
+            _ => (false, "未加载".into()),
+        };
+        return ServiceStatus {
+            installed,
+            running,
+            binary_present,
+            unit_path: unit.display().to_string(),
+            managed_binary: managed.display().to_string(),
+            detail,
+            root,
+        };
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let unit = paths::systemd_unit_path();
+        let installed = unit.exists();
+        let output = Command::new("systemctl")
+            .args(["is-active", SERVICE_NAME])
+            .output();
+        let detail = output
+            .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_string())
+            .unwrap_or_else(|_| "unknown".into());
+        return ServiceStatus {
+            installed,
+            running: detail == "active",
+            binary_present,
+            unit_path: unit.display().to_string(),
+            managed_binary: managed.display().to_string(),
+            detail,
+            root,
+        };
+    }
+
+    #[cfg(windows)]
+    {
+        let _ = SERVICE_NAME;
+        ServiceStatus {
+            installed: false,
+            running: false,
+            binary_present,
+            unit_path: "sc.exe create agentmond".into(),
+            managed_binary: managed.display().to_string(),
+            detail: "Windows 服务尚未实现，请手动注册".into(),
+            root,
+        }
+    }
+}
+
 pub fn status() -> Result<()> {
-    let root = agentmon_core::util::is_root();
+    let _ = service_status();
+    let root = crate::util::is_root();
     println!(
         "{}{}agentmond 服务状态{}",
         Ansi::BOLD,
@@ -636,9 +832,7 @@ pub fn status() -> Result<()> {
         if db.exists() {
             format!(
                 "({})",
-                agentmon_core::util::format_bytes(
-                    std::fs::metadata(&db).map(|m| m.len()).unwrap_or(0)
-                )
+                crate::util::format_bytes(std::fs::metadata(&db).map(|m| m.len()).unwrap_or(0))
             )
         } else {
             "(尚未创建)".into()
@@ -662,4 +856,130 @@ pub fn status() -> Result<()> {
         ),
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tmp(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "agentmon-install-{}-{}",
+            name,
+            crate::util::now_ms()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// The desktop app hands this script to `do shell script`, so quoting bugs
+    /// would fail silently at the worst moment. Run it for real.
+    #[test]
+    fn rendered_script_survives_spaces_and_quotes() {
+        let dir = tmp("script");
+        let target = dir.join("with space").join("it's here.txt");
+        let steps = vec![
+            Step::Note("test".into()),
+            Step::EnsureDir {
+                path: target.parent().unwrap().to_path_buf(),
+                mode: 0o750,
+                group: None,
+            },
+            Step::WriteFile {
+                path: target.clone(),
+                mode: 0o640,
+                contents: "line one\nsecond 'quoted' line\n".into(),
+            },
+            Step::Run {
+                program: "/bin/echo".into(),
+                args: vec!["hello world".into(), "it's fine".into()],
+                ignore_failure: false,
+            },
+        ];
+
+        let script = render_script(&steps);
+        let output = Command::new("/bin/sh")
+            .arg("-c")
+            .arg(&script)
+            .output()
+            .expect("sh");
+        assert!(
+            output.status.success(),
+            "script failed: {}\n--- script ---\n{script}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let written = std::fs::read_to_string(&target).expect("file written");
+        assert_eq!(written, "line one\nsecond 'quoted' line\n");
+        assert!(String::from_utf8_lossy(&output.stdout).contains("hello world"));
+
+        // the heredoc must not leak into following commands
+        let script_after_echo = render_script(&[
+            Step::WriteFile {
+                path: dir.join("a.txt"),
+                mode: 0o600,
+                contents: "x".into(),
+            },
+            Step::Run {
+                program: "/bin/echo".into(),
+                args: vec!["after".into()],
+                ignore_failure: false,
+            },
+        ]);
+        let out = Command::new("/bin/sh")
+            .arg("-c")
+            .arg(&script_after_echo)
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+        assert!(
+            String::from_utf8_lossy(&out.stdout)
+                .trim()
+                .ends_with("after")
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn script_fails_fast_and_describe_lists_the_steps() {
+        let steps = vec![
+            Step::Note("复制二进制".into()),
+            Step::CopyFile {
+                from: PathBuf::from("/nonexistent/source"),
+                to: PathBuf::from("/tmp/agentmon-never"),
+                mode: 0o755,
+            },
+        ];
+        let script = render_script(&steps);
+        assert!(script.starts_with("set -e"), "must fail fast: {script}");
+        let out = Command::new("/bin/sh")
+            .arg("-c")
+            .arg(&script)
+            .output()
+            .unwrap();
+        assert!(!out.status.success(), "copying a missing file must fail");
+
+        let described = describe(&steps);
+        assert_eq!(described.len(), 2);
+        assert!(described[0].contains("复制二进制"));
+        assert!(described[1].contains("/tmp/agentmon-never"));
+    }
+
+    #[test]
+    fn macos_plan_uses_the_stable_binary_location() {
+        let opts = InstallOptions {
+            dry_run: true,
+            user: Some("tester".into()),
+            binary: Some(PathBuf::from("/tmp/agentmond")),
+            no_start: false,
+        };
+        let plan = plan_install(&opts).expect("plan");
+        let described = describe(&plan).join("\n");
+        assert!(
+            described.contains("/usr/local/lib/agentmon/agentmond"),
+            "{described}"
+        );
+        assert!(described.contains("agentmon 组") || described.contains("agentmon"));
+    }
 }

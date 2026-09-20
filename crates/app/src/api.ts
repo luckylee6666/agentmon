@@ -8,6 +8,7 @@ import type {
   HttpRow,
   Overview,
   ProfileDto,
+  ServiceStatus,
   VolumePoint,
 } from "./types";
 
@@ -50,6 +51,19 @@ export const api = {
     call<VolumePoint[]>("egress", { sinceMs, bucketMs, agentId }, mock.mockVolume),
   destinations: (sinceMs?: number, limit?: number) =>
     call<Destination[]>("destinations", { sinceMs, limit }, mock.mockDestinations),
+  daemonStatus: () =>
+    call<ServiceStatus>("daemon_status", {}, {
+      installed: false,
+      running: false,
+      binary_present: false,
+      unit_path: "/Library/LaunchDaemons/ai.agentmon.agentmond.plist",
+      managed_binary: "/usr/local/lib/agentmon/agentmond",
+      detail: "未加载",
+      root: false,
+    }),
+  daemonPlan: (action: string) => call<string[]>("daemon_plan", { action }, 
+    action === "uninstall" ? ["停用并移除服务", "保留数据库"] : ["复制二进制到 /usr/local/lib/agentmon", "创建 agentmon 组", "写入 LaunchDaemon 并加载"]),
+  daemonRun: (action: string) => call<string>("daemon_run", { action }, ""),
   runScan: (deep?: boolean) => call<Finding[]>("run_scan", { deep }, mock.mockFindings.slice(0, 3)),
   profiles: () => call<ProfileDto[]>("list_agent_profiles", {}, mock.mockProfiles),
   paths: () =>

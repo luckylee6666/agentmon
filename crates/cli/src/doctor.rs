@@ -260,7 +260,7 @@ pub fn run() -> Result<()> {
         &format!("最低级别 {}", config.alert.min_severity),
     );
 
-    let group_ok = crate::install::group_id(crate::install::GROUP_NAME).is_some();
+    let group_ok = agentmon_core::install::group_id(agentmon_core::install::GROUP_NAME).is_some();
     println!("\n{}{}权限{}", Ansi::BOLD, Ansi::CYAN, Ansi::RESET);
     line(
         group_ok,

@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { api, type AgentDto, type ArtifactRow, type Destination, type FileEventRow, type Finding, type HttpRow, type ProfileDto } from "./api";
+import { api, type AgentDto, type ArtifactRow, type Destination, type FileEventRow, type Finding, type HttpRow,
+  type ServiceStatus, type ProfileDto } from "./api";
 import { formatAgo, formatBytes, formatCount, formatTime, elidePath, evidenceLabels, ruleLabels } from "./format";
 
 function classColor(value: string): string {
@@ -508,6 +509,130 @@ export function AgentsView({ agents, profiles }: { agents: AgentDto[]; profiles:
   );
 }
 
+/// Installing the root daemon is the one action that needs privileges, so it is
+/// spelled out here: what will change, that macOS will ask for an admin
+/// password, and what the file layer unlocks once it runs.
+function DaemonPanel() {
+  const [status, setStatus] = useState<ServiceStatus | null>(null);
+  const [plan, setPlan] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+
+  const refresh = () => {
+    api
+      .daemonStatus()
+      .then(setStatus)
+      .catch(() => setStatus(null));
+  };
+
+  useEffect(refresh, []);
+
+  const preview = async (action: string) => {
+    setMessage(null);
+    setPlan(await api.daemonPlan(action).catch(() => []));
+  };
+
+  const run = async (action: string) => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      await api.daemonRun(action);
+      setMessage({
+        kind: "ok",
+        text: action === "uninstall" ? "已卸载守护进程" : "安装完成，文件层已启用",
+      });
+      setPlan([]);
+      refresh();
+    } catch (err) {
+      setMessage({ kind: "err", text: String(err) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const installed = status?.installed ?? false;
+
+  return (
+    <div className="panel">
+      <div className="panel-head">
+        <h3>守护进程（root）</h3>
+        <span className={`pill ${installed && status?.running ? "on" : ""}`}>
+          {installed ? (status?.running ? "运行中" : "已安装未运行") : "未安装"}
+        </span>
+      </div>
+      <div className="panel-body hint">
+        只有以 root 常驻运行，才能审计<strong>文件读取</strong>——谁读了 <span className="mono">.git</span>、
+        <span className="mono">.env</span>、私钥。元数据层和内容层不需要它。
+      </div>
+      <div className="panel-body">
+        {status && (
+          <dl className="kv">
+            <dt>服务文件</dt>
+            <dd className="mono">
+              {status.unit_path} {status.installed ? "（存在）" : "（未安装）"}
+            </dd>
+            <dt>守护程序</dt>
+            <dd className="mono">
+              {status.managed_binary} {status.binary_present ? "（存在）" : "（缺失）"}
+            </dd>
+            <dt>运行状态</dt>
+            <dd>{status.detail}</dd>
+          </dl>
+        )}
+
+        {plan.length > 0 && (
+          <div className="plan">
+            <div className="muted" style={{ marginBottom: 6 }}>将执行以下操作：</div>
+            <ul>
+              {plan.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {message && (
+          <div className={`notice ${message.kind}`} style={{ marginTop: 10 }}>
+            {message.text}
+          </div>
+        )}
+
+        <div className="btn-row" style={{ marginTop: 12 }}>
+          {!installed ? (
+            <>
+              <button
+                className="primary"
+                disabled={busy}
+                onMouseEnter={() => preview("install")}
+                onClick={() => run("install")}
+              >
+                {busy ? "等待授权…" : "安装守护进程"}
+              </button>
+              <span className="muted" style={{ fontSize: 11 }}>
+                macOS 会弹出管理员授权框，输入一次密码即可
+              </span>
+            </>
+          ) : (
+            <>
+              <button
+                disabled={busy}
+                onMouseEnter={() => preview("uninstall")}
+                onClick={() => run("uninstall")}
+              >
+                {busy ? "等待授权…" : "卸载"}
+              </button>
+              <span className="muted" style={{ fontSize: 11 }}>
+                卸载会停止服务，但保留数据库
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 export function SettingsView({ onScan }: { onScan: () => Promise<Finding[]> }) {
   const [paths, setPaths] = useState<Record<string, string> | null>(null);
   const [scanResult, setScanResult] = useState<Finding[] | null>(null);
@@ -519,6 +644,8 @@ export function SettingsView({ onScan }: { onScan: () => Promise<Finding[]> }) {
 
   return (
     <>
+      <DaemonPanel />
+
       <div className="panel">
         <div className="panel-head">
           <h3>路径</h3>

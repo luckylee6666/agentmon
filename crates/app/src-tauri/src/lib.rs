@@ -1,6 +1,7 @@
 use agentmon_core::collect::artifacts;
 use agentmon_core::config::Config;
 use agentmon_core::detect::{DetectCtx, Detector};
+use agentmon_core::install;
 use agentmon_core::model::{Event, Finding, FindingStatus, Severity};
 use agentmon_core::paths;
 use agentmon_core::profiles::ProfileSet;
@@ -127,6 +128,90 @@ fn db_info() -> DbInfo {
         db_size: std::fs::metadata(&active).map(|m| m.len()).unwrap_or(0),
         version: agentmon_core::VERSION.to_string(),
     }
+}
+
+/// The daemon ships inside the bundle; in a dev tree it is the sibling
+/// `target/release/agentmond` next to `target/debug/agentmon-app`.
+fn find_daemon_binary() -> Option<std::path::PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let dir = exe.parent()?;
+    let mut candidates = vec![dir.join("agentmond")];
+    if let Some(contents) = dir.parent() {
+        candidates.push(contents.join("Resources").join("agentmond"));
+        candidates.push(contents.join("MacOS").join("agentmond"));
+    }
+    if let Some(target) = dir.parent() {
+        candidates.push(target.join("release").join("agentmond"));
+        candidates.push(target.join("debug").join("agentmond"));
+    }
+    candidates.into_iter().find(|path| path.is_file())
+}
+
+/// Runs a shell script as root through the system authorisation dialog.
+/// Everything in the script comes from a plan this crate built, never from the
+/// UI, and it is passed as a single AppleScript argument so there is no
+/// temporary file to race with.
+fn run_privileged(script: &str) -> CmdResult<String> {
+    let escaped = script.replace('\\', "\\\\").replace('"', "\\\"");
+    let applescript = format!("do shell script \"{escaped}\" with administrator privileges");
+    let output = std::process::Command::new("/usr/bin/osascript")
+        .arg("-e")
+        .arg(&applescript)
+        .output()
+        .map_err(|err| format!("无法调用 osascript: {err}"))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if output.status.success() {
+        return Ok(stdout);
+    }
+    if stderr.contains("-128") || stderr.contains("User canceled") {
+        return Err("已取消授权".into());
+    }
+    Err(if stderr.is_empty() { stdout } else { stderr })
+}
+
+#[tauri::command]
+fn daemon_status() -> CmdResult<install::ServiceStatus> {
+    Ok(install::service_status())
+}
+
+#[tauri::command]
+fn daemon_plan(action: String) -> CmdResult<Vec<String>> {
+    let steps = match action.as_str() {
+        "uninstall" => install::plan_uninstall(),
+        _ => {
+            let binary =
+                find_daemon_binary().ok_or("找不到 agentmond（守护进程二进制），无法安装")?;
+            install::plan_install(&install::InstallOptions {
+                dry_run: false,
+                user: None,
+                binary: Some(binary),
+                no_start: false,
+            })
+            .map_err(err)?
+        }
+    };
+    Ok(install::describe(&steps))
+}
+
+#[tauri::command]
+fn daemon_run(action: String) -> CmdResult<String> {
+    let steps = match action.as_str() {
+        "uninstall" => install::plan_uninstall(),
+        _ => {
+            let binary =
+                find_daemon_binary().ok_or("找不到 agentmond（守护进程二进制），无法安装")?;
+            install::plan_install(&install::InstallOptions {
+                dry_run: false,
+                user: None,
+                binary: Some(binary),
+                no_start: false,
+            })
+            .map_err(err)?
+        }
+    };
+    run_privileged(&install::render_script(&steps))
 }
 
 #[tauri::command]
@@ -430,6 +515,9 @@ pub fn run() {
             list_file_events,
             list_http_requests,
             http_body,
+            daemon_status,
+            daemon_plan,
+            daemon_run,
             list_artifacts,
             egress,
             destinations,

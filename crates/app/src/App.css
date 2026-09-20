@@ -658,3 +658,33 @@ dl.kv dd {
   font: 11.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
   color: #cbd5e1;
 }
+
+.plan {
+  background: #0d1119;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 11.5px;
+}
+.plan ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-dim);
+  line-height: 1.7;
+}
+.notice {
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-size: 12px;
+  border: 1px solid;
+}
+.notice.ok {
+  border-color: rgba(46, 160, 67, 0.4);
+  background: rgba(46, 160, 67, 0.1);
+  color: #7ee2a8;
+}
+.notice.err {
+  border-color: rgba(248, 81, 73, 0.4);
+  background: rgba(248, 81, 73, 0.1);
+  color: #ff9a92;
+}

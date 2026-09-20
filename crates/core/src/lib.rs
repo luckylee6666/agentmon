@@ -3,6 +3,7 @@ pub mod collect;
 pub mod config;
 pub mod detect;
 pub mod dns;
+pub mod install;
 pub mod model;
 pub mod paths;
 pub mod pipeline;

@@ -17,7 +17,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 mod doctor;
-mod install;
 
 #[derive(Parser)]
 #[command(
@@ -220,14 +219,14 @@ async fn main() -> Result<()> {
             user,
             binary,
             no_start,
-        } => install::install(install::InstallOptions {
+        } => agentmon_core::install::install(agentmon_core::install::InstallOptions {
             dry_run,
             user,
             binary,
             no_start,
         }),
-        Commands::Uninstall { dry_run } => install::uninstall(dry_run),
-        Commands::ServiceStatus => install::status(),
+        Commands::Uninstall { dry_run } => agentmon_core::install::uninstall(dry_run),
+        Commands::ServiceStatus => agentmon_core::install::status(),
         Commands::Doctor => doctor::run(),
         Commands::Config { cmd } => cmd_config(cmd),
         Commands::Ignore { id, undo } => cmd_ignore(id, undo),

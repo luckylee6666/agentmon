@@ -119,3 +119,13 @@ export interface ProfileDto {
   telemetry_domains: string[];
   notes?: string | null;
 }
+
+export interface ServiceStatus {
+  installed: boolean;
+  running: boolean;
+  binary_present: boolean;
+  unit_path: string;
+  managed_binary: string;
+  detail: string;
+  root: boolean;
+}
