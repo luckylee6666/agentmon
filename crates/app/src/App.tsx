@@ -147,6 +147,11 @@ export default function App() {
     };
   }, [overview?.volume]);
 
+  const agentBars = (overview?.agents ?? []).filter((a) => a.bytes_out_24h > 0).length;
+  // A fixed height leaves a handful of bars stretched across the panel; follow
+  // the bar count instead, with a floor so a single bar still looks deliberate.
+  const agentsChartHeight = Math.min(320, Math.max(150, agentBars * 34 + 56));
+
   const agentsOption = useMemo<EChartsOption>(() => {
     const agents = [...(overview?.agents ?? [])].filter((a) => a.bytes_out_24h > 0).reverse();
     return {
@@ -177,7 +182,7 @@ export default function App() {
           type: "bar",
           data: agents.map((a) => a.bytes_out_24h),
           itemStyle: { color: "#3d7dff", borderRadius: [0, 3, 3, 0] },
-          barMaxWidth: 16,
+          barWidth: 16,
         },
       ],
     };
@@ -305,7 +310,7 @@ export default function App() {
                   <h3>各 agent 24h 出站</h3>
                 </div>
                 <div className="panel-body">
-                  <Chart option={agentsOption} height={228} />
+                  <Chart option={agentsOption} height={agentsChartHeight} />
                 </div>
               </div>
             </div>
