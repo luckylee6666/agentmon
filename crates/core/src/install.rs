@@ -180,6 +180,13 @@ fn daemon_binary(opts: &InstallOptions) -> Result<PathBuf> {
     )
 }
 
+fn managed_binary_dir() -> PathBuf {
+    managed_binary_path()
+        .parent()
+        .map(|dir| dir.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("/usr/local/lib/agentmon"))
+}
+
 fn managed_binary_path() -> PathBuf {
     #[cfg(target_os = "macos")]
     {
@@ -426,6 +433,11 @@ pub fn log_path() -> PathBuf {
 fn build_plan(opts: &InstallOptions, binary: &Path, user: &str) -> Result<Vec<Step>> {
     let mut steps = vec![
         Step::Note("复制二进制到稳定位置（避免 target/ 被清理后服务失效）".into()),
+        Step::EnsureDir {
+            path: managed_binary_dir(),
+            mode: 0o755,
+            group: None,
+        },
         Step::CopyFile {
             from: binary.to_path_buf(),
             to: managed_binary_path(),
@@ -454,6 +466,14 @@ fn build_plan(opts: &InstallOptions, binary: &Path, user: &str) -> Result<Vec<St
             path: paths::data_dir(true),
             mode: 0o750,
             group: Some(GROUP_NAME.into()),
+        },
+        Step::EnsureDir {
+            path: paths::launchd_plist_path()
+                .parent()
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| PathBuf::from("/Library/LaunchDaemons")),
+            mode: 0o755,
+            group: None,
         },
         Step::WriteFile {
             path: paths::launchd_plist_path(),
@@ -494,6 +514,11 @@ fn build_plan(opts: &InstallOptions, binary: &Path, user: &str) -> Result<Vec<St
 #[cfg(target_os = "linux")]
 fn build_plan(opts: &InstallOptions, binary: &Path, user: &str) -> Result<Vec<Step>> {
     let mut steps = vec![
+        Step::EnsureDir {
+            path: managed_binary_dir(),
+            mode: 0o755,
+            group: None,
+        },
         Step::CopyFile {
             from: binary.to_path_buf(),
             to: managed_binary_path(),
@@ -524,6 +549,14 @@ fn build_plan(opts: &InstallOptions, binary: &Path, user: &str) -> Result<Vec<St
             path: paths::data_dir(true),
             mode: 0o750,
             group: Some(GROUP_NAME.into()),
+        },
+        Step::EnsureDir {
+            path: paths::systemd_unit_path()
+                .parent()
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| PathBuf::from("/etc/systemd/system")),
+            mode: 0o755,
+            group: None,
         },
         Step::WriteFile {
             path: paths::systemd_unit_path(),
@@ -939,6 +972,63 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Rewrites a plan into a sandbox and really runs it. `--dry-run` cannot
+    /// catch a plan that copies into a directory nothing ever creates; running
+    /// the rendered script can, because `set -e` stops at exactly that step.
+    #[test]
+    fn the_plan_actually_installs_into_a_sandbox() {
+        let root = tmp("sandbox");
+        let opts = InstallOptions {
+            dry_run: true,
+            user: Some("tester".into()),
+            binary: Some(PathBuf::from("/bin/echo")),
+            no_start: true,
+        };
+        let rebase = |path: &Path| root.join(path.strip_prefix("/").unwrap_or(path));
+
+        let plan: Vec<Step> = plan_install(&opts)
+            .expect("plan")
+            .into_iter()
+            .filter_map(|step| match step {
+                // 需要 root 的步骤在沙箱里没有意义
+                Step::Note(_) | Step::Run { .. } | Step::Remove(_) => None,
+                Step::EnsureDir { path, mode, .. } => Some(Step::EnsureDir {
+                    path: rebase(&path),
+                    mode,
+                    group: None,
+                }),
+                Step::CopyFile { from, to, mode } => Some(Step::CopyFile {
+                    from,
+                    to: rebase(&to),
+                    mode,
+                }),
+                Step::WriteFile { path, mode, contents } => Some(Step::WriteFile {
+                    path: rebase(&path),
+                    mode,
+                    contents,
+                }),
+            })
+            .collect();
+
+        let script = render_script(&plan);
+        let output = Command::new("/bin/sh").arg("-c").arg(&script).output().expect("sh");
+        assert!(
+            output.status.success(),
+            "计划无法执行：{}\n--- script ---\n{script}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let installed = rebase(&managed_binary_path());
+        assert!(installed.is_file(), "守护程序没有被复制到 {}", installed.display());
+        assert!(rebase(&dir_of(&paths::launchd_plist_path())).is_dir());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    fn dir_of(path: &Path) -> PathBuf {
+        path.parent().map(Path::to_path_buf).unwrap_or_default()
     }
 
     #[test]

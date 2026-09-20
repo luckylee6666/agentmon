@@ -154,6 +154,24 @@ fn find_daemon_binary() -> Option<std::path::PathBuf> {
 /// Everything in the script comes from a plan this crate built, never from the
 /// UI, and it is passed as a single AppleScript argument so there is no
 /// temporary file to race with.
+/// osascript wraps failures as "0:1721: execution error: <message> (1)".
+/// The useful part is the shell's own message.
+fn clean_privileged_error(text: &str) -> String {
+    let text = text.trim();
+    let after = text
+        .split_once("execution error: ")
+        .map(|(_, rest)| rest)
+        .unwrap_or(text)
+        .trim();
+    if let Some(index) = after.rfind(" (") {
+        let tail = &after[index + 2..after.len().saturating_sub(1)];
+        if after.ends_with(')') && !tail.is_empty() && tail.chars().all(|c| c.is_ascii_digit()) {
+            return after[..index].to_string();
+        }
+    }
+    after.to_string()
+}
+
 fn run_privileged(script: &str) -> CmdResult<String> {
     let escaped = script.replace('\\', "\\\\").replace('"', "\\\"");
     let applescript = format!("do shell script \"{escaped}\" with administrator privileges");
@@ -171,7 +189,8 @@ fn run_privileged(script: &str) -> CmdResult<String> {
     if stderr.contains("-128") || stderr.contains("User canceled") {
         return Err("已取消授权".into());
     }
-    Err(if stderr.is_empty() { stdout } else { stderr })
+    let raw = if stderr.is_empty() { stdout } else { stderr };
+    Err(clean_privileged_error(&raw))
 }
 
 #[tauri::command]
